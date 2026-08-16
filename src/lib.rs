@@ -85,6 +85,10 @@ fn init_world(width: f32, height: f32) -> (PhysicsWorld, RigidBodyHandle, Vec<Ri
     let mut world = PhysicsWorld::new();
     world.gravity = Vec2::new(0.0, GRAVITY);
     world.integration_parameters.dt = DT as f32;
+    // 像素单位：100px = 1m。Rapier 按米调校，默认 length_unit=1 时
+    // normalized_max_linear_velocity(400) 会把速度钳制在 400px/s，
+    // 导致落体被限速、首次弹跳高度异常。设为 100 后速度上限为 40000px/s。
+    world.integration_parameters.length_unit = 100.0;
 
     let walls = insert_bounds(&mut world, width, height);
 
