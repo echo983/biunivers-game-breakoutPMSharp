@@ -12,7 +12,9 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, MouseEvent};
 
 const DT: f64 = 1.0 / 60.0;
-const GRAVITY: f32 = -1200.0;
+// 重力：0.5.6 由 1200 降至 900。1200 时球上升到砖块区被重力吃掉大量速度，
+// 阈值(按发射速度标定)高于实际可达冲击 → 黄/硬砖"打不破"。900 更漂浮、接球窗口更长。
+const GRAVITY: f32 = -900.0;
 const BALL_RADIUS: f32 = 12.0;
 const WALL_THICKNESS: f32 = 40.0;
 // 球自身的弹性为 0，配合 Max 合并规则让"接触面的弹性"决定反弹：
@@ -57,11 +59,12 @@ const BRICK_H: f32 = 22.0;
 const BRICK_GAP: f32 = 4.0;
 
 // 冲击阈值（px/s）：球在本物理子步开始前的速度。
-// 0.5.5 随速度上限联动调整：上限 1400 时，y=400 处最大冲击实测 ~993、硬砖顶排
-// ~870-950。硬砖阈值 1100→900 才可破（近满速可破，保留"最硬"定位）；普通 800 不变。
+// 0.5.6 重标定（配合重力 900）：此前按"发射速度"标定，实际砖块区冲击远低于发射
+// （重力衰减）。探测实测重力 900 下各砖行最大冲击：绿区 1131 / 黄区 1076 / 硬区 1020，
+// 故阈值设 500/750/850，三档余量健康（+126%/+43%/+20%）。
 const SOFT_THRESHOLD: f32 = 500.0;
-const NORMAL_THRESHOLD: f32 = 800.0;
-const HARD_THRESHOLD: f32 = 900.0;
+const NORMAL_THRESHOLD: f32 = 750.0;
+const HARD_THRESHOLD: f32 = 850.0;
 
 // ---- 球数（见 docs/design-v1.md §4）----
 const START_BALLS: u32 = 5;
