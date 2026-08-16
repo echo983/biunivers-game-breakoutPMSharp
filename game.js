@@ -41,12 +41,12 @@ export function pointer_down(_x, _y, _buttons) {
 }
 
 /**
- * @param {number} x
+ * @param {number} _x
  * @param {number} _y
  * @param {number} _buttons
  */
-export function pointer_move(x, _y, _buttons) {
-    wasm.pointer_move(x, _y, _buttons);
+export function pointer_move(_x, _y, _buttons) {
+    wasm.pointer_move(_x, _y, _buttons);
 }
 
 /**

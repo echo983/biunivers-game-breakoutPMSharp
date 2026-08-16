@@ -25,6 +25,8 @@ const SETTLE_ANGVEL: f32 = 0.1;
 // 球拍
 const PADDLE_Y: f32 = 50.0;
 const PADDLE_MOVE_SPEED: [f32; 3] = [720.0, 620.0, 500.0];
+// 键盘控制的平滑加速系数：越大反应越快、启停越生硬（8 ≈ 0.12s 到满速）
+const PADDLE_ACCEL: f32 = 8.0;
 const PADDLE_HALF_W: [f32; 3] = [90.0, 80.0, 100.0];
 const PADDLE_HALF_H: [f32; 3] = [8.0, 18.0, 45.0];
 const PADDLE_REST: [f32; 3] = [0.7, 0.95, 0.5];
@@ -100,6 +102,7 @@ struct Game {
     paddle_half_h: f32,
     paddle_move_speed: f32,
     paddle_target_x: f32,
+    paddle_vel: f32,
     key_left: bool,
     key_right: bool,
     width: f32,
@@ -215,6 +218,7 @@ fn select_paddle_inner(g: &mut Game, kind: u8) {
     g.paddle_half_h = PADDLE_HALF_H[kind as usize];
     g.paddle_move_speed = PADDLE_MOVE_SPEED[kind as usize];
     g.paddle_target_x = g.width * 0.5;
+    g.paddle_vel = 0.0;
 
     let (paddle, paddle_collider) = g.world.insert(
         RigidBodyBuilder::kinematic_position_based()
@@ -415,11 +419,16 @@ fn show_hud() {
     if let Some(hud) = document_element("hud") {
         let _ = hud.remove_attribute("hidden");
     }
+    if let Some(hint) = document_element("controls-hint") {
+        let _ = hint.remove_attribute("hidden");
+    }
 }
 
 fn hide_hud() {
-    if let Some(hud) = document_element("hud") {
-        let _ = hud.set_attribute("hidden", "");
+    for id in ["hud", "controls-hint"] {
+        if let Some(el) = document_element(id) {
+            let _ = el.set_attribute("hidden", "");
+        }
     }
 }
 
@@ -562,6 +571,7 @@ pub async fn setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bo
                     paddle_half_h: PADDLE_HALF_H[VARIANT_SKATE as usize],
                     paddle_move_speed: PADDLE_MOVE_SPEED[VARIANT_SKATE as usize],
                     paddle_target_x: width * 0.5,
+                    paddle_vel: 0.0,
                     key_left: false,
                     key_right: false,
                     width,
@@ -667,13 +677,18 @@ pub fn step(dt: f64) {
             return;
         }
 
-        // 键盘移动球拍（Serve 与 Play 都生效）
-        if g.key_left {
-            g.paddle_target_x -= g.paddle_move_speed * dt as f32;
-        }
-        if g.key_right {
-            g.paddle_target_x += g.paddle_move_speed * dt as f32;
-        }
+        // 键盘移动球拍（Serve 与 Play 都生效）：平滑加速/减速到目标速度
+        let dir = if g.key_right && !g.key_left {
+            1.0
+        } else if g.key_left && !g.key_right {
+            -1.0
+        } else {
+            0.0
+        };
+        let target_vel = dir * g.paddle_move_speed;
+        let ease = (PADDLE_ACCEL * dt as f32).min(1.0);
+        g.paddle_vel += (target_vel - g.paddle_vel) * ease;
+        g.paddle_target_x += g.paddle_vel * dt as f32;
         if let Some(paddle) = g.paddle {
             let half = g.paddle_half_w;
             g.paddle_target_x = g.paddle_target_x.clamp(half, g.width - half);
@@ -848,8 +863,8 @@ pub fn key(code: &str, down: bool) {
         }
 
         match code {
-            "ArrowLeft" => g.key_left = down,
-            "ArrowRight" => g.key_right = down,
+            "ArrowLeft" | "KeyA" => g.key_left = down,
+            "ArrowRight" | "KeyD" => g.key_right = down,
             "Space" if down && g.state == State::Serve => serve(g),
             _ => {}
         }
@@ -869,14 +884,8 @@ pub fn pointer_down(_x: f64, _y: f64, _buttons: u32) {
 pub fn pointer_up(_x: f64, _y: f64, _buttons: u32) {}
 
 #[wasm_bindgen]
-pub fn pointer_move(x: f64, _y: f64, _buttons: u32) {
-    with_game(|g| {
-        if g.state == State::Menu {
-            return;
-        }
-        let half = g.paddle_half_w;
-        g.paddle_target_x = (x as f32).clamp(half, g.width - half);
-    });
+pub fn pointer_move(_x: f64, _y: f64, _buttons: u32) {
+    // 键盘主控：指针不再操控球拍，仅保留发球（pointer_down）。
 }
 
 #[wasm_bindgen]
