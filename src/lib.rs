@@ -21,6 +21,7 @@ struct Game {
     width: f32,
     height: f32,
     accumulator: f64,
+    paused: bool,
 }
 
 thread_local! {
@@ -109,8 +110,15 @@ pub fn setup(ctx: CanvasRenderingContext2d, width: f64, height: f64) {
             width,
             height,
             accumulator: 0.0,
+            paused: false,
         });
     });
+}
+
+#[wasm_bindgen]
+pub fn configure(config: &str) {
+    // 当前游戏没有公开配置；保留接口，未来用 serde 解析。
+    let _ = config;
 }
 
 #[wasm_bindgen]
@@ -137,6 +145,10 @@ pub fn resize(width: f64, height: f64) {
 #[wasm_bindgen]
 pub fn step(dt: f64) {
     with_game(|g| {
+        if g.paused {
+            return;
+        }
+
         g.accumulator += dt;
         if g.accumulator > 0.25 {
             g.accumulator = 0.25;
@@ -192,3 +204,36 @@ pub fn render() {
         ctx.fill();
     });
 }
+
+#[wasm_bindgen]
+pub fn key(code: &str, down: bool) {
+    let _ = (code, down);
+}
+
+#[wasm_bindgen]
+pub fn pointer_down(x: f64, y: f64, buttons: u32) {
+    let _ = (x, y, buttons);
+}
+
+#[wasm_bindgen]
+pub fn pointer_up(x: f64, y: f64, buttons: u32) {
+    let _ = (x, y, buttons);
+}
+
+#[wasm_bindgen]
+pub fn pointer_move(x: f64, y: f64, buttons: u32) {
+    let _ = (x, y, buttons);
+}
+
+#[wasm_bindgen]
+pub fn wheel(dx: f64, dy: f64) {
+    let _ = (dx, dy);
+}
+
+#[wasm_bindgen]
+pub fn set_paused(paused: bool) {
+    with_game(|g| g.paused = paused);
+}
+
+#[wasm_bindgen]
+pub fn destroy() {}

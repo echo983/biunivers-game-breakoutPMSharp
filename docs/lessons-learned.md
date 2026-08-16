@@ -89,3 +89,5 @@
   `pkg/`、`target/` 加入 `.gitignore`。
 - `.wasm` 需以 `application/wasm` 提供，`instantiateStreaming` 才能工作（Python
   `http.server` 已正确映射）。
+- 外壳会 `fetch("./.biunivers/config.json")`（由宿主提供）；本地静态服务器测试时该请求
+  必然 404，属预期，验证时需排除这一条（应用已回退 `{}`）。

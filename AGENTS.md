@@ -30,6 +30,7 @@ If present, these are frozen protocol copies too:
 - `BIUNIVERS_OPEN_RESOURCE_PROTOCOL_V1.md`
 - `BIUNIVERS_OPEN_RESOURCE_PROTOCOL_V1_1.md`
 - `BIUNIVERS_RESOURCE_SESSION_PROTOCOL_V1.md`
+- `BIUNIVERS_GAME_RUNTIME_PROTOCOL_V1.md`
 
 Do not reformat, translate, summarize, fix, or regenerate these files. Copy official replacements
 byte-for-byte when an authorized protocol update is required.

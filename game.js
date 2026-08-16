@@ -1,4 +1,54 @@
-/* @ts-self-types="./breakout_game.d.ts" */
+/* @ts-self-types="./game.d.ts" */
+
+/**
+ * @param {string} config
+ */
+export function configure(config) {
+    const ptr0 = passStringToWasm0(config, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.configure(ptr0, len0);
+}
+
+export function destroy() {
+    wasm.destroy();
+}
+
+/**
+ * @param {string} code
+ * @param {boolean} down
+ */
+export function key(code, down) {
+    const ptr0 = passStringToWasm0(code, wasm.__wbindgen_malloc, wasm.__wbindgen_realloc);
+    const len0 = WASM_VECTOR_LEN;
+    wasm.key(ptr0, len0, down);
+}
+
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} buttons
+ */
+export function pointer_down(x, y, buttons) {
+    wasm.pointer_down(x, y, buttons);
+}
+
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} buttons
+ */
+export function pointer_move(x, y, buttons) {
+    wasm.pointer_move(x, y, buttons);
+}
+
+/**
+ * @param {number} x
+ * @param {number} y
+ * @param {number} buttons
+ */
+export function pointer_up(x, y, buttons) {
+    wasm.pointer_up(x, y, buttons);
+}
 
 export function render() {
     wasm.render();
@@ -10,6 +60,13 @@ export function render() {
  */
 export function resize(width, height) {
     wasm.resize(width, height);
+}
+
+/**
+ * @param {boolean} paused
+ */
+export function set_paused(paused) {
+    wasm.set_paused(paused);
 }
 
 /**
@@ -26,6 +83,14 @@ export function setup(ctx, width, height) {
  */
 export function step(dt) {
     wasm.step(dt);
+}
+
+/**
+ * @param {number} dx
+ * @param {number} dy
+ */
+export function wheel(dx, dy) {
+    wasm.wheel(dx, dy);
 }
 function __wbg_get_imports() {
     const import0 = {
@@ -63,7 +128,7 @@ function __wbg_get_imports() {
     };
     return {
         __proto__: null,
-        "./breakout_game_bg.js": import0,
+        "./game_bg.js": import0,
     };
 }
 
@@ -94,6 +159,43 @@ function handleError(f, args) {
     }
 }
 
+function passStringToWasm0(arg, malloc, realloc) {
+    if (realloc === undefined) {
+        const buf = cachedTextEncoder.encode(arg);
+        const ptr = malloc(buf.length, 1) >>> 0;
+        getUint8ArrayMemory0().subarray(ptr, ptr + buf.length).set(buf);
+        WASM_VECTOR_LEN = buf.length;
+        return ptr;
+    }
+
+    let len = arg.length;
+    let ptr = malloc(len, 1) >>> 0;
+
+    const mem = getUint8ArrayMemory0();
+
+    let offset = 0;
+
+    for (; offset < len; offset++) {
+        const code = arg.charCodeAt(offset);
+        if (code > 0x7F) break;
+        mem[ptr + offset] = code;
+    }
+    if (offset !== len) {
+        if (offset !== 0) {
+            arg = arg.slice(offset);
+        }
+        ptr = realloc(ptr, len, len = offset + arg.length * 3, 1) >>> 0;
+        const view = getUint8ArrayMemory0().subarray(ptr + offset, ptr + len);
+        const ret = cachedTextEncoder.encodeInto(arg, view);
+
+        offset += ret.written;
+        ptr = realloc(ptr, len, offset, 1) >>> 0;
+    }
+
+    WASM_VECTOR_LEN = offset;
+    return ptr;
+}
+
 let cachedTextDecoder = new TextDecoder('utf-8', { ignoreBOM: true, fatal: true });
 cachedTextDecoder.decode();
 const MAX_SAFARI_DECODE_BYTES = 2146435072;
@@ -107,6 +209,21 @@ function decodeText(ptr, len) {
     }
     return cachedTextDecoder.decode(getUint8ArrayMemory0().subarray(ptr, ptr + len));
 }
+
+const cachedTextEncoder = new TextEncoder();
+
+if (!('encodeInto' in cachedTextEncoder)) {
+    cachedTextEncoder.encodeInto = function (arg, view) {
+        const buf = cachedTextEncoder.encode(arg);
+        view.set(buf);
+        return {
+            read: arg.length,
+            written: buf.length
+        };
+    };
+}
+
+let WASM_VECTOR_LEN = 0;
 
 let wasmModule, wasmInstance, wasm;
 function __wbg_finalize_init(instance, module) {
@@ -190,7 +307,7 @@ async function __wbg_init(module_or_path) {
     }
 
     if (module_or_path === undefined) {
-        module_or_path = new URL('breakout_game_bg.wasm', import.meta.url);
+        module_or_path = new URL('game_bg.wasm', import.meta.url);
     }
     const imports = __wbg_get_imports();
 
