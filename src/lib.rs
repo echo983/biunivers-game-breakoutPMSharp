@@ -97,6 +97,7 @@ fn init_world(width: f32, height: f32) -> (PhysicsWorld, RigidBodyHandle, Vec<Ri
                 .angular_damping(0.9),
             ColliderBuilder::ball(BALL_RADIUS)
                 .restitution(RESTITUTION)
+                .restitution_combine_rule(CoefficientCombineRule::Max)
                 .friction(FRICTION)
                 .density(1.0),
         )
