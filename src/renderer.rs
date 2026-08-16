@@ -3,7 +3,7 @@ use std::mem::size_of;
 use wgpu::util::DeviceExt;
 use web_sys::HtmlCanvasElement;
 
-use crate::mesh::{generate_unit_box, generate_unit_sphere, Mesh, Vertex};
+use crate::mesh::{generate_unit_box, generate_unit_hemisphere, generate_unit_sphere, Mesh, Vertex};
 
 const WGSL: &str = r#"
 struct CameraUniform {
@@ -56,6 +56,15 @@ const WALL_COLOR: [f32; 4] = [0.35, 0.42, 0.55, 1.0];
 const GROUND_THICKNESS: f32 = 8.0;
 const DEPTH: f32 = 120.0;
 
+// 球拍类型（与 lib.rs 保持一致）：0=滑板(cube) 1=橄榄球(sphere) 2=碗(hemisphere)
+pub const PADDLE_RUGBY: u8 = 1;
+pub const PADDLE_BOWL: u8 = 2;
+const PADDLE_COLORS: [[f32; 4]; 3] = [
+    [1.0, 0.55, 0.2, 1.0],   // 滑板：橙
+    [0.72, 0.45, 0.25, 1.0], // 橄榄球：棕
+    [0.3, 0.6, 0.9, 1.0],    // 碗：蓝
+];
+
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct CameraUniform {
@@ -93,8 +102,11 @@ pub struct Renderer {
     camera_bind_group: wgpu::BindGroup,
     sphere: MeshBuffers,
     cube: MeshBuffers,
+    hemisphere: MeshBuffers,
     ball: Object,
-    ground: Object,
+    paddle: Object,
+    paddle_kind: u8,
+    ceiling: Object,
     left_wall: Object,
     right_wall: Object,
     camera: CameraUniform,
@@ -224,9 +236,11 @@ impl Renderer {
 
         let sphere = create_mesh_buffers(&device, &generate_unit_sphere(24, 32));
         let cube = create_mesh_buffers(&device, &generate_unit_box());
+        let hemisphere = create_mesh_buffers(&device, &generate_unit_hemisphere(24, 32));
 
         let ball = create_object(&device, &object_layout);
-        let ground = create_object(&device, &object_layout);
+        let paddle = create_object(&device, &object_layout);
+        let ceiling = create_object(&device, &object_layout);
         let left_wall = create_object(&device, &object_layout);
         let right_wall = create_object(&device, &object_layout);
 
@@ -242,8 +256,11 @@ impl Renderer {
             camera_bind_group,
             sphere,
             cube,
+            hemisphere,
             ball,
-            ground,
+            paddle,
+            paddle_kind: 0,
+            ceiling,
             left_wall,
             right_wall,
             camera: CameraUniform {
@@ -285,6 +302,30 @@ impl Renderer {
             .write_buffer(&self.ball.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
     }
 
+    pub fn update_paddle(&mut self, x: f32, y: f32, kind: u8, half_w: f32, half_h: f32) {
+        self.paddle_kind = kind;
+        let model = match kind {
+            // 橄榄球/碗：单位半径网格直接缩放为半宽/半高
+            PADDLE_RUGBY | PADDLE_BOWL => glam::Mat4::from_scale_rotation_translation(
+                glam::Vec3::new(half_w, DEPTH, half_h),
+                glam::Quat::IDENTITY,
+                glam::Vec3::new(x, 0.0, y),
+            ),
+            // 滑板：单位立方体 [-0.5,0.5]，放大两倍到全尺寸
+            _ => glam::Mat4::from_scale_rotation_translation(
+                glam::Vec3::new(half_w * 2.0, DEPTH, half_h * 2.0),
+                glam::Quat::IDENTITY,
+                glam::Vec3::new(x, 0.0, y),
+            ),
+        };
+        let uniform = ObjectUniform {
+            model: model.to_cols_array_2d(),
+            color: PADDLE_COLORS[kind as usize],
+        };
+        self.queue
+            .write_buffer(&self.paddle.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
+    }
+
     fn update_camera(&mut self) {
         let aspect = if self.css_height > 0.0 {
             self.css_width / self.css_height
@@ -311,10 +352,10 @@ impl Renderer {
         let h = self.css_height;
         let depth = DEPTH;
 
-        let ground_model = glam::Mat4::from_scale_rotation_translation(
+        let ceiling_model = glam::Mat4::from_scale_rotation_translation(
             glam::Vec3::new(w + 2.0 * GROUND_THICKNESS, depth, GROUND_THICKNESS),
             glam::Quat::IDENTITY,
-            glam::Vec3::new(w * 0.5, 0.0, -GROUND_THICKNESS * 0.5),
+            glam::Vec3::new(w * 0.5, 0.0, h + GROUND_THICKNESS * 0.5),
         );
         let left_model = glam::Mat4::from_scale_rotation_translation(
             glam::Vec3::new(GROUND_THICKNESS, depth, h + 2.0 * GROUND_THICKNESS),
@@ -327,7 +368,7 @@ impl Renderer {
             glam::Vec3::new(w + GROUND_THICKNESS * 0.5, 0.0, h * 0.5),
         );
 
-        write_object(&self.queue, &mut self.ground, ground_model);
+        write_object(&self.queue, &mut self.ceiling, ceiling_model);
         write_object(&self.queue, &mut self.left_wall, left_model);
         write_object(&self.queue, &mut self.right_wall, right_model);
     }
@@ -385,10 +426,31 @@ impl Renderer {
             render_pass.set_index_buffer(self.sphere.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
             render_pass.draw_indexed(0..self.sphere.index_count, 0, 0..1);
 
-            // 地面与侧墙（立方体）
+            // 球拍（按类型选网格：滑板=立方体，橄榄球=球体，碗=半球）
+            render_pass.set_bind_group(1, &self.paddle.bind_group, &[]);
+            match self.paddle_kind {
+                PADDLE_RUGBY => {
+                    render_pass.set_vertex_buffer(0, self.sphere.vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(self.sphere.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..self.sphere.index_count, 0, 0..1);
+                }
+                PADDLE_BOWL => {
+                    render_pass.set_vertex_buffer(0, self.hemisphere.vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(self.hemisphere.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..self.hemisphere.index_count, 0, 0..1);
+                }
+                // 滑板（默认，含未知类型兜底）
+                _ => {
+                    render_pass.set_vertex_buffer(0, self.cube.vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(self.cube.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..self.cube.index_count, 0, 0..1);
+                }
+            }
+
+            // 天花板与侧墙（立方体）
             render_pass.set_vertex_buffer(0, self.cube.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.cube.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
-            for object in [&self.ground, &self.left_wall, &self.right_wall] {
+            for object in [&self.ceiling, &self.left_wall, &self.right_wall] {
                 render_pass.set_bind_group(1, &object.bind_group, &[]);
                 render_pass.draw_indexed(0..self.cube.index_count, 0, 0..1);
             }

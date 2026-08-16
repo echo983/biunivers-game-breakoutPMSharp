@@ -14,6 +14,24 @@
         <p class="unsupported-title">需要 WebGPU</p>
         <p>本游戏需要支持 WebGPU 的浏览器环境。请使用最新版 Chrome、Edge 或 Firefox（开启 WebGPU），并在支持 WebGPU 的桌面环境中运行。</p>
       </div>
+      <div id="menu" hidden>
+        <p class="menu-title">选择你的球拍</p>
+        <div class="menu-cards">
+          <button type="button" id="paddle-skate" class="menu-card">
+            <span class="card-name">滑板</span>
+            <span class="card-desc">扁平快板 · 弹性适中，反弹直接，移动最灵活</span>
+          </button>
+          <button type="button" id="paddle-rugby" class="menu-card">
+            <span class="card-name">橄榄球</span>
+            <span class="card-desc">凸面椭圆 · 弹性最高，命中点不同反弹角多变</span>
+          </button>
+          <button type="button" id="paddle-bowl" class="menu-card">
+            <span class="card-name">碗</span>
+            <span class="card-desc">凹面弧壁 · 收住小球并向上定向送出，可控性最强</span>
+          </button>
+        </div>
+        <p class="menu-hint">点击选择，或按键盘 1 / 2 / 3</p>
+      </div>
     </main>
     <script type="module" src="./runtime.js"></script>
   </body>
