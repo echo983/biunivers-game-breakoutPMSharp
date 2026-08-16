@@ -223,6 +223,7 @@ version = "0.2.0"
 dependencies = [
  "bytemuck",
  "glam 0.33.3",
+ "js-sys",
  "rapier2d",
  "wasm-bindgen",
  "wasm-bindgen-futures",

@@ -44,6 +44,9 @@ const PADDLE_BOOST: f32 = 1.30;
 const MAX_BALL_SPEED: f32 = 2000.0;
 // 低于该接近速度不视为一次有效的球拍击球（避免发球/停驻误触发）
 const BOOST_MIN_APPROACH: f32 = 50.0;
+// 每次球拍增压时叠加的随机横向扰动比例（1.5%）：破坏"完美垂直往返"轨道。
+// 方向随机，速度幅值不变（仅改变出射角约 0.86°）；低速几乎无感，高速打破无限弹。
+const PADDLE_NUDGE_RATIO: f32 = 0.015;
 
 // ---- 砖块（见 docs/design-v1.md §3）----
 const BRICK_COLS: u32 = 8;
@@ -749,7 +752,14 @@ pub fn step(dt: f64) {
                         let v = body.linvel();
                         if v.length() > 0.0 {
                             let speed = (approach_speed * PADDLE_BOOST).min(MAX_BALL_SPEED);
-                            body.set_linvel(v.normalize() * speed, true);
+                            let dir = v.normalize();
+                            // 随机横向微扰动：破坏"完美垂直往返"轨道（1.5% 速度，
+                            // 出射角约 ±0.86°）。归一化保持速度幅值不变。
+                            let nudge = (js_sys::Math::random() as f32 * 2.0 - 1.0)
+                                * speed
+                                * PADDLE_NUDGE_RATIO;
+                            let out = (dir * speed + Vec2::new(nudge, 0.0)).normalize() * speed;
+                            body.set_linvel(out, true);
                         }
                     }
 

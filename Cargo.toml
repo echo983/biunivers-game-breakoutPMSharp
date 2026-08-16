@@ -12,6 +12,7 @@ opt-level = "s"
 [dependencies]
 bytemuck = { version = "1.25.2", features = ["derive"] }
 glam = "0.33.3"
+js-sys = "0.3.104"
 rapier2d = "0.35.2"
 wasm-bindgen = "0.2.127"
 wasm-bindgen-futures = "0.4.77"
