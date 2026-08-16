@@ -15,8 +15,9 @@
 
 - 游戏本体：Rust（`src/lib.rs`）编译为单个 WASM `game_bg.wasm`，内含 Rapier2d 物理世界；
   渲染用 `wgpu`（WebGPU 后端）画 3D 场景（小球球体 + 地面/墙立方体 + 透视相机 + 光照）。
-- 运行时外壳：`runtime.js` + `index.html`，内容无关——加载 WASM、协商渲染后端（WebGPU
-  优先、2D 回退）、转发输入、跑 `requestAnimationFrame` 循环、处理缩放/DPR/可见性/配置。
+- 运行时外壳：`runtime.js` + `index.html`，内容无关——加载 WASM、协商渲染后端（WebGPU）、
+  转发输入、跑 `requestAnimationFrame` 循环、处理缩放/DPR/可见性/配置；不支持 WebGPU 时
+  显示友好提示（不提供 2D 回退）。
 - 接口：`render_backend/hosting_mode/setup/setup_gpu/configure/resize/step/render/key/
   pointer_*/wheel/set_paused/destroy`（见 v2 协议）。
 
@@ -24,7 +25,7 @@
 
 ```bash
 python3 -m http.server 8000
-# 打开 http://localhost:8000/（需支持 WebGPU 的浏览器；不支持时自动回退 2D）
+# 打开 http://localhost:8000/（需支持 WebGPU 的浏览器；不支持时显示提示）
 ```
 
 ## 构建（开发者）

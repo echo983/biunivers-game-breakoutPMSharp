@@ -109,3 +109,13 @@
 - 无头 Chrome 测 WebGPU：加 `--enable-unsafe-webgpu --enable-features=Vulkan
   --use-angle=vulkan`；且需在 localhost 等安全上下文（`about:blank` 无 `navigator.gpu`）。
 - WebGPU canvas 无法用 2D context 读像素，验证要靠截图 + 解码（如 pngjs）。
+
+## 9. 回退路径移除与友好提示
+
+- canvas 上下文类型互斥：一旦走了 `create_surface(Canvas)`（占用 webgpu 上下文），再
+  `getContext("2d")` 会返回 null → 画面空白。因此「WebGPU 失败回退 2D」在已占用上下文
+  的情况下不可靠。
+- 决策：本游戏不提供 2D 回退。不支持 WebGPU 时外壳显示友好提示 overlay，并停止启动。
+- 在进入 `setup_gpu` 前先用 JS 预检测 `navigator.gpu.requestAdapter()`；无 adapter 时直接
+  提示，避免 wgpu 在无 adapter 环境内部抛未捕获异常（`requestDevice` null）。
+- 提示用独立 DOM overlay（`#unsupported`）覆盖在 canvas 上，与渲染后端无关，任何环境都可见。

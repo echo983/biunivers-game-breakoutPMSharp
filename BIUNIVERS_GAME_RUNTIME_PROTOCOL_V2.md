@@ -36,7 +36,7 @@ v1 的 2D hosted 契约在 v2 中完整保留，因此 v1 游戏在 v2 外壳下
 
 - 2D：外壳 `canvas.getContext("2d")` → `setup(ctx2d, width, height)`。
 - WebGPU：外壳检测到 `navigator.gpu` 后调用 `setup_gpu(canvas, width, height)`
-  （异步，返回是否成功）；失败时回退到 2D 路径。
+  （异步，返回是否成功）；失败时外壳显示明确错误提示。
 
 ### self-managed 模式
 
@@ -78,7 +78,7 @@ Rust crate 名固定为 `game`，使 wasm-pack 产物固定为 `game.js` / `game
 - `hosting_mode() -> u32`（可选，缺省 0）
 - `setup(ctx2d: CanvasRenderingContext2d, width: f64, height: f64)`（2D hosted）
 - `setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bool`
-  （WebGPU hosted，异步；`true` 表示成功，`false` 表示失败，外壳据此回退 2D）
+  （WebGPU hosted，异步；`true` 表示成功，`false` 表示失败，外壳据此显示错误提示）
 - `configure(config: string)`
 - `resize(width: f64, height: f64)`
 - `step(dt: f64)`
@@ -104,7 +104,7 @@ Rust crate 名固定为 `game`，使 wasm-pack 产物固定为 `game.js` / `game
   adapter/device、配置 surface 格式，并处理 device loss。
 - `resize` 时游戏重配 surface（或按当前纹理尺寸呈现）。
 - `render()` 中游戏完成 `get_current_texture()` → 渲染 → `present()`。
-- 外壳不保证 WebGPU 可用；游戏需保留 2D 回退路径或给出明确错误。
+- 外壳不保证 WebGPU 可用；不可用时外壳应显示明确错误提示，游戏不必提供 2D 回退。
 
 ## 7. 输入约定（hosted）
 
