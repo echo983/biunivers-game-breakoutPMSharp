@@ -100,6 +100,8 @@ GameOver ──R/点击──▶ Serve（重建关卡）
   - `move_brick(index, x, y, half_w, half_h)`：resize 时按新布局重新定位（物理位置由 lib.rs 同步）。
 - `render()`：逐砖绘制 cube 网格（每砖一次 draw，48 次以内，WebGPU 无压力）。
 - 数据流：`lib.rs` 持有砖块物理状态与索引，渲染顺序与 `bricks` 列表一致。
+- **相机取景**：target/eye 取高度 0.53/0.55（居中"球拍→砖顶"游玩区），保证默认
+  与最小窗口（360×400）下砖块区完整可见（0.5.2 修正）。
 
 ## 8. 数据流总览
 

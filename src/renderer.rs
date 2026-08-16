@@ -400,8 +400,11 @@ impl Renderer {
         let fov_y = 50.0_f32.to_radians();
         let cam_dist = (self.css_width + self.css_height) * 0.6;
 
-        let eye = glam::Vec3::new(self.css_width * 0.5, -cam_dist, self.css_height * 0.5);
-        let target = glam::Vec3::new(self.css_width * 0.5, 0.0, self.css_height * 0.35);
+        // 取景：以游玩区（球拍 y≈50 到顶排砖块 y≈height-17）为中心。
+        // target/eye 取 height 的 0.53/0.55，确保默认与最小窗口下砖块区均完整可见
+        //（此前 0.35 会让顶排硬砖在最小窗口完全出屏，见 0.5.2 提交说明）。
+        let eye = glam::Vec3::new(self.css_width * 0.5, -cam_dist, self.css_height * 0.55);
+        let target = glam::Vec3::new(self.css_width * 0.5, 0.0, self.css_height * 0.53);
         let view = glam::camera::rh::view::look_at_mat4(eye, target, glam::Vec3::Z);
         let proj = glam::camera::rh::proj::directx::perspective(fov_y, aspect, 0.1, 2000.0);
 

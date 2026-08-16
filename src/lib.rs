@@ -627,26 +627,29 @@ pub fn resize(width: f64, height: f64) {
             body.set_translation(pos, true);
         }
 
-        // 砖块按新窗口尺寸重新布局：列数变化则重建（含进度重置），否则仅重定位
-        let cols = brick_cols_for_width(width);
-        if cols != g.brick_cols {
-            build_level(g);
-        } else {
-            let top_y = brick_top_y(height);
-            let left_x = brick_left_x(width, g.brick_cols);
-            for (i, brick) in g.bricks.iter_mut().enumerate() {
-                if !brick.alive {
-                    continue;
-                }
-                let col = (i as u32 % g.brick_cols) as f32;
-                let row = (i as u32 / g.brick_cols) as f32;
-                let x = left_x + col * (BRICK_W + BRICK_GAP);
-                let y = top_y - row * (BRICK_H + BRICK_GAP);
-                if let Some(body) = g.world.bodies.get_mut(brick.body) {
-                    body.set_translation(Vec2::new(x, y), true);
-                }
-                if let Some(renderer) = g.renderer.as_mut() {
-                    renderer.move_brick(brick.render_index, x, y, BRICK_W * 0.5, BRICK_H * 0.5);
+        // 砖块按新窗口尺寸重新布局：列数变化则重建（含进度重置），否则仅重定位。
+        // Menu 状态尚无砖块，跳过（避免提前建砖，选拍时会统一重建）。
+        if g.state != State::Menu {
+            let cols = brick_cols_for_width(width);
+            if cols != g.brick_cols {
+                build_level(g);
+            } else {
+                let top_y = brick_top_y(height);
+                let left_x = brick_left_x(width, g.brick_cols);
+                for (i, brick) in g.bricks.iter_mut().enumerate() {
+                    if !brick.alive {
+                        continue;
+                    }
+                    let col = (i as u32 % g.brick_cols) as f32;
+                    let row = (i as u32 / g.brick_cols) as f32;
+                    let x = left_x + col * (BRICK_W + BRICK_GAP);
+                    let y = top_y - row * (BRICK_H + BRICK_GAP);
+                    if let Some(body) = g.world.bodies.get_mut(brick.body) {
+                        body.set_translation(Vec2::new(x, y), true);
+                    }
+                    if let Some(renderer) = g.renderer.as_mut() {
+                        renderer.move_brick(brick.render_index, x, y, BRICK_W * 0.5, BRICK_H * 0.5);
+                    }
                 }
             }
         }
