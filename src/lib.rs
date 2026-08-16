@@ -35,7 +35,11 @@ const VARIANT_BOWL: u8 = 2;
 const SERVE_SPEED: f32 = 520.0;
 const LOSS_Y: f32 = -80.0;
 // 球拍接球时的速度增压系数（见 docs/design-v0.1.md §6）
-const PADDLE_BOOST: f32 = 1.10;
+// 由物理仿真标定：+30% 使颠球 3-4 次后球速足以够到砖块区并击破普通砖
+//（仿真见 0.4.2 提交说明；B=1.30 时 650→798→947→1100...）
+const PADDLE_BOOST: f32 = 1.30;
+// 球速上限：防止多次增压后球快到完全无法接住（设计草案 §16 收束条件）
+const MAX_BALL_SPEED: f32 = 2000.0;
 // 低于该接近速度不视为一次有效的球拍击球（避免发球/停驻误触发）
 const BOOST_MIN_APPROACH: f32 = 50.0;
 
@@ -454,7 +458,8 @@ pub fn step(dt: f64) {
                         let body = g.world.bodies.get_mut(g.ball.unwrap()).unwrap();
                         let v = body.linvel();
                         if v.length() > 0.0 {
-                            body.set_linvel(v.normalize() * (approach_speed * PADDLE_BOOST), true);
+                            let speed = (approach_speed * PADDLE_BOOST).min(MAX_BALL_SPEED);
+                            body.set_linvel(v.normalize() * speed, true);
                         }
                     }
 
