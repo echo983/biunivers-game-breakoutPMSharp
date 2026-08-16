@@ -1,7 +1,8 @@
 # Biunivers Breakout
 
-经典打砖块（Breakout）游戏，作为 Biunivers 静态桌面应用运行。当前阶段：开局三选一选择球拍，
-三种球拍（滑板/橄榄球/碗）具有不同的弹性与物理表现；小球在场地内弹跳，需要球拍接住并发球。
+经典打砖块（Breakout）游戏，作为 Biunivers 静态桌面应用运行。当前为 **v1 完整可玩版本**：
+开局三选一选择球拍（滑板/橄榄球/碗，物理各异），颠球增压后击破三种砖块，在有限球数内
+清版取胜。版本历史见 [`CHANGELOG.md`](CHANGELOG.md)，文档索引见 [`docs/README.md`](docs/README.md)。
 
 - 协议：`biunivers.static-app/1` + `biunivers.game-runtime/2`
 - 入口：`index.html`（仓库根目录）
@@ -52,8 +53,9 @@
   转发输入、跑 `requestAnimationFrame` 循环、处理缩放/DPR/可见性/配置；不支持 WebGPU 时
   显示友好提示（不提供 2D 回退）。
 - 界面：球拍选择菜单由游戏本体（Rust）通过 DOM 管理，外壳保持内容无关。
-- 接口：`render_backend/hosting_mode/setup/setup_gpu/select_paddle/configure/resize/step/
-  render/key/pointer_*/wheel/set_paused/destroy`（见 v2 协议）。
+- 接口：`render_backend/hosting_mode/setup/setup_gpu/configure/resize/step/render/key/
+  pointer_*/wheel/set_paused/destroy`（见 v2 协议；`select_paddle` 为游戏内部 DOM 接口，
+  外壳不调用）。
 - 物理单位：像素（100px = 1m），`length_unit = 100` 避免 Rapier 默认 400 m/s 的速度钳制
   变成 400px/s 硬上限（见 git log 0.3.5）。
 
@@ -74,18 +76,20 @@ python3 -m http.server 8000
 
 ## 目录
 
-- `index.html`：应用入口（外壳 + 球拍选择菜单）
+- `index.html`：应用入口（外壳 + 球拍选择菜单 + HUD/结算覆盖层）
 - `runtime.js`：内容无关的运行时外壳
 - `game.js` / `game_bg.wasm`：wasm-bindgen 胶水 + 游戏本体（构建产物）
-- `src/lib.rs`：游戏逻辑、物理与球拍类型
+- `src/lib.rs`：游戏逻辑、物理、球拍类型与砖块系统
 - `src/renderer.rs`：wgpu 3D 渲染器
 - `src/mesh.rs`：球体/立方体/半球网格生成
 - `Cargo.toml` / `Cargo.lock`：Rust 工程
 - `build.sh`：构建脚本
 - `style.css` / `icon.svg`：样式与图标
 - `biunivers.app.json`：应用清单
-- `BIUNIVERS_APP_PROTOCOL_V1.md`：静态应用协议原文（请勿修改）
-- `BIUNIVERS_GAME_RUNTIME_PROTOCOL_V1.md` / `_V2.md`：游戏运行时协议原文（请勿修改）
+- `CHANGELOG.md`：发布历史（SemVer）
+- `docs/`：设计/经验/规范文档（索引见 `docs/README.md`）
+- `BIUNIVERS_APP_PROTOCOL_V1.md`：静态应用协议原文（冻结，请勿修改）
+- `BIUNIVERS_GAME_RUNTIME_PROTOCOL_V1.md` / `_V2.md`：游戏运行时协议草稿（本仓库自有，非冻结）
 - `AGENTS.md`：AI 开发代理约束
 
 ## 配置
