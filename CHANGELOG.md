@@ -4,7 +4,16 @@ Biunivers Breakout 发布历史。版本号对应 `biunivers.app.json` 的 `vers
 
 ## 未发布
 
-- `feat/keyboard-control` 分支上 0.5.4（随机微扰动），见下文。
+- `feat/keyboard-control` 分支上 0.5.5（重开球位置 + 速度上限），见下文。
+
+## 0.5.5 — 2026-08-16
+
+- 修复重开球时球拍/球位置乱现：球拍改用直接 `set_translation`。此前 `set_next_
+  kinematic_translation` 只写 next_position、须等 step() 才应用，Serve 不步进 → 球拍
+  位置滞留、发球从错位处出发。
+- 速度上限 2000 → **1400 px/s**（实测反馈 2000 远超人类可控；1400 往返约 0.64s）。
+- 联动：硬砖阈值 1100 → **900**（上限 1400 时 y=400 冲击实测 ~993、顶排 ~870-950，
+  原阈值不可破；探测验证软/普通/硬三档均可破）。
 
 ## 0.5.4 — 2026-08-16
 

@@ -40,8 +40,9 @@ const LOSS_Y: f32 = -80.0;
 // 由物理仿真标定：+30% 使颠球 3-4 次后球速足以够到砖块区并击破普通砖
 //（仿真见 0.4.2 提交说明；B=1.30 时 650→798→947→1100...）
 const PADDLE_BOOST: f32 = 1.30;
-// 球速上限：防止多次增压后球快到完全无法接住（设计草案 §16 收束条件）
-const MAX_BALL_SPEED: f32 = 2000.0;
+// 球速上限：多次增压后防止球快到无法接住（0.5.5 从 2000 降至 1400，实测反馈 2000
+// 远超人类可控；1400 下往返约 0.64s，仍有技能空间）。
+const MAX_BALL_SPEED: f32 = 1400.0;
 // 低于该接近速度不视为一次有效的球拍击球（避免发球/停驻误触发）
 const BOOST_MIN_APPROACH: f32 = 50.0;
 // 每次球拍增压时叠加的随机横向扰动比例（1.5%）：破坏"完美垂直往返"轨道。
@@ -55,10 +56,12 @@ const BRICK_W: f32 = 56.0;
 const BRICK_H: f32 = 22.0;
 const BRICK_GAP: f32 = 4.0;
 
-// 冲击阈值（px/s）：球在本物理子步开始前的速度
+// 冲击阈值（px/s）：球在本物理子步开始前的速度。
+// 0.5.5 随速度上限联动调整：上限 1400 时，y=400 处最大冲击实测 ~993、硬砖顶排
+// ~870-950。硬砖阈值 1100→900 才可破（近满速可破，保留"最硬"定位）；普通 800 不变。
 const SOFT_THRESHOLD: f32 = 500.0;
 const NORMAL_THRESHOLD: f32 = 800.0;
-const HARD_THRESHOLD: f32 = 1100.0;
+const HARD_THRESHOLD: f32 = 900.0;
 
 // ---- 球数（见 docs/design-v1.md §4）----
 const START_BALLS: u32 = 5;
@@ -696,7 +699,9 @@ pub fn step(dt: f64) {
             let half = g.paddle_half_w;
             g.paddle_target_x = g.paddle_target_x.clamp(half, g.width - half);
             let body = g.world.bodies.get_mut(paddle).unwrap();
-            body.set_next_kinematic_translation(Vec2::new(g.paddle_target_x, PADDLE_Y));
+            // 直接 set_translation：立即生效。set_next_kinematic_translation 只写
+            // next_position、须等 step() 才应用；Serve 不步进 → 球拍位置滞留、发球错位。
+            body.set_translation(Vec2::new(g.paddle_target_x, PADDLE_Y), true);
         }
 
         match g.state {
