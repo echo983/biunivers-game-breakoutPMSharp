@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "protocol": "biunivers.static-app/1",
   "appId": "io.github.echo983.biunivers-game-breakout",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "name": "Biunivers Breakout",
   "description": "经典打砖块（Breakout）游戏，作为 Biunivers 静态桌面应用运行。",
   "license": "MIT",

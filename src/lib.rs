@@ -1,8 +1,12 @@
+mod mesh;
+mod renderer;
+
 use std::cell::RefCell;
 
 use rapier2d::prelude::*;
+use renderer::Renderer;
 use wasm_bindgen::prelude::*;
-use web_sys::CanvasRenderingContext2d;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 const DT: f64 = 1.0 / 60.0;
 const GRAVITY: f32 = -1200.0;
@@ -17,7 +21,8 @@ struct Game {
     world: PhysicsWorld,
     ball: RigidBodyHandle,
     walls: Vec<RigidBodyHandle>,
-    ctx: CanvasRenderingContext2d,
+    ctx: Option<CanvasRenderingContext2d>,
+    renderer: Option<Renderer>,
     width: f32,
     height: f32,
     accumulator: f64,
@@ -77,14 +82,11 @@ fn insert_bounds(world: &mut PhysicsWorld, width: f32, height: f32) -> Vec<Rigid
     walls
 }
 
-#[wasm_bindgen]
-pub fn setup(ctx: CanvasRenderingContext2d, width: f64, height: f64) {
+fn init_world(width: f32, height: f32) -> (PhysicsWorld, RigidBodyHandle, Vec<RigidBodyHandle>) {
     let mut world = PhysicsWorld::new();
     world.gravity = Vec2::new(0.0, GRAVITY);
     world.integration_parameters.dt = DT as f32;
 
-    let width = width as f32;
-    let height = height as f32;
     let walls = insert_bounds(&mut world, width, height);
 
     let ball = world
@@ -101,18 +103,66 @@ pub fn setup(ctx: CanvasRenderingContext2d, width: f64, height: f64) {
         )
         .0;
 
+    (world, ball, walls)
+}
+
+#[wasm_bindgen]
+pub fn render_backend() -> u32 {
+    1 // WebGPU
+}
+
+#[wasm_bindgen]
+pub fn hosting_mode() -> u32 {
+    0 // hosted
+}
+
+#[wasm_bindgen]
+pub fn setup(ctx: CanvasRenderingContext2d, width: f64, height: f64) {
+    let width = width as f32;
+    let height = height as f32;
+    let (world, ball, walls) = init_world(width, height);
+
     GAME.with(|slot| {
         *slot.borrow_mut() = Some(Game {
             world,
             ball,
             walls,
-            ctx,
+            ctx: Some(ctx),
+            renderer: None,
             width,
             height,
             accumulator: 0.0,
             paused: false,
         });
     });
+}
+
+#[wasm_bindgen]
+pub async fn setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bool {
+    let width = width as f32;
+    let height = height as f32;
+    let renderer = Renderer::new(canvas, width, height).await;
+
+    match renderer {
+        Ok(renderer) => {
+            let (world, ball, walls) = init_world(width, height);
+            GAME.with(|slot| {
+                *slot.borrow_mut() = Some(Game {
+                    world,
+                    ball,
+                    walls,
+                    ctx: None,
+                    renderer: Some(renderer),
+                    width,
+                    height,
+                    accumulator: 0.0,
+                    paused: false,
+                });
+            });
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 #[wasm_bindgen]
@@ -139,6 +189,10 @@ pub fn resize(width: f64, height: f64) {
         pos.x = pos.x.clamp(BALL_RADIUS, width - BALL_RADIUS);
         pos.y = pos.y.clamp(BALL_RADIUS, height - BALL_RADIUS);
         body.set_translation(pos, true);
+
+        if let Some(renderer) = g.renderer.as_mut() {
+            renderer.resize(width, height);
+        }
     });
 }
 
@@ -170,38 +224,45 @@ pub fn step(dt: f64) {
 #[wasm_bindgen]
 pub fn render() {
     with_game(|g| {
-        let ctx = &g.ctx;
-        let width = g.width as f64;
-        let height = g.height as f64;
-        let radius = BALL_RADIUS as f64;
+        let pos = g.world.bodies[g.ball].translation();
 
-        ctx.clear_rect(0.0, 0.0, width, height);
+        if let Some(renderer) = g.renderer.as_mut() {
+            renderer.update_ball(pos.x, pos.y, BALL_RADIUS);
+            renderer.render();
+            return;
+        }
 
-        // 底部地面条带
-        ctx.set_fill_style_str("rgb(90, 106, 138)");
-        ctx.fill_rect(0.0, height - 4.0, width, 4.0);
+        if let Some(ctx) = g.ctx.as_ref() {
+            let width = g.width as f64;
+            let height = g.height as f64;
+            let radius = BALL_RADIUS as f64;
 
-        let body = &g.world.bodies[g.ball];
-        let pos = body.translation();
-        let angle = body.rotation().angle() as f64;
-        let sx = pos.x as f64;
-        let sy = height - pos.y as f64;
+            ctx.clear_rect(0.0, 0.0, width, height);
 
-        // 小球
-        ctx.begin_path();
-        let _ = ctx.arc(sx, sy, radius, 0.0, std::f64::consts::TAU);
-        ctx.set_fill_style_str("rgb(255, 207, 92)");
-        ctx.fill();
+            // 底部地面条带
+            ctx.set_fill_style_str("rgb(90, 106, 138)");
+            ctx.fill_rect(0.0, height - 4.0, width, 4.0);
 
-        // 旋转标记：随角速度转动，直观看到滚动
-        let marker_offset = radius * 0.55;
-        let mx = sx + angle.cos() * marker_offset;
-        let my = sy - angle.sin() * marker_offset;
+            let angle = g.world.bodies[g.ball].rotation().angle() as f64;
+            let sx = pos.x as f64;
+            let sy = height - pos.y as f64;
 
-        ctx.begin_path();
-        let _ = ctx.arc(mx, my, radius * 0.3, 0.0, std::f64::consts::TAU);
-        ctx.set_fill_style_str("rgb(92, 64, 18)");
-        ctx.fill();
+            // 小球
+            ctx.begin_path();
+            let _ = ctx.arc(sx, sy, radius, 0.0, std::f64::consts::TAU);
+            ctx.set_fill_style_str("rgb(255, 207, 92)");
+            ctx.fill();
+
+            // 旋转标记
+            let marker_offset = radius * 0.55;
+            let mx = sx + angle.cos() * marker_offset;
+            let my = sy - angle.sin() * marker_offset;
+
+            ctx.begin_path();
+            let _ = ctx.arc(mx, my, radius * 0.3, 0.0, std::f64::consts::TAU);
+            ctx.set_fill_style_str("rgb(92, 64, 18)");
+            ctx.fill();
+        }
     });
 }
 

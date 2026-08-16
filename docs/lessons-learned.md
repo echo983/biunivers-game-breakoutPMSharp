@@ -91,3 +91,21 @@
   `http.server` 已正确映射）。
 - 外壳会 `fetch("./.biunivers/config.json")`（由宿主提供）；本地静态服务器测试时该请求
   必然 404，属预期，验证时需排除这一条（应用已回退 `{}`）。
+
+## 8. WebGPU / wgpu 30 集成
+
+- `async fn` 的 wasm 导出需要直接依赖 `wasm-bindgen-futures`。
+- canvas 上下文类型互斥：不能先 `getContext("2d")` 再 `create_surface(Canvas)`；先按需
+  协商后端，再取对应上下文。WebGPU 路径表面用画布物理尺寸（`canvas.width/height`），
+  物理与输入用 CSS 尺寸。
+- wgpu 30 API 变化：`PipelineLayoutDescriptor.bind_group_layouts` 是 `&[Option<...>]`，
+  `push_constant_ranges` 改名 `immediate_size`；`DepthStencilState.depth_write_enabled` /
+  `depth_compare` 是 `Option`；`get_current_texture` 返回 `CurrentSurfaceTexture` 枚举
+  （非 Result），呈现用 `Queue::present(tex)`。
+- WGSL：没有 `mat3x3<f32>(mat4x4)` 构造器；从列构造：
+  `mat3x3(m[0].xyz, m[1].xyz, m[2].xyz)`。
+- glam 弃用：`Mat4::look_at_rh` / `perspective_rh` → `glam::camera::rh::view::look_at_mat4`
+  与 `glam::camera::rh::proj::directx::perspective`。
+- 无头 Chrome 测 WebGPU：加 `--enable-unsafe-webgpu --enable-features=Vulkan
+  --use-angle=vulkan`；且需在 localhost 等安全上下文（`about:blank` 无 `navigator.gpu`）。
+- WebGPU canvas 无法用 2D context 读像素，验证要靠截图 + 解码（如 pngjs）。

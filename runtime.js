@@ -1,5 +1,8 @@
 import init, {
+  render_backend,
+  hosting_mode,
   setup,
+  setup_gpu,
   configure,
   resize,
   step,
@@ -14,9 +17,9 @@ import init, {
 } from "./game.js";
 
 const canvas = document.querySelector("#canvas");
-const ctx = canvas.getContext("2d");
 
-let width = 0;
+let ctx2d = null;
+let width = 0; // CSS 像素
 let height = 0;
 
 function applySize() {
@@ -26,7 +29,9 @@ function applySize() {
   height = Math.max(1, Math.round(rect.height));
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (ctx2d) {
+    ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
 }
 
 function localPoint(event) {
@@ -48,7 +53,7 @@ async function loadConfig() {
   }
 }
 
-// 内容无关的运行时外壳：加载 WASM、转发输入、驱动帧循环。
+// 内容无关的运行时外壳：加载 WASM、协商后端、转发输入、驱动帧循环。
 const query = new URLSearchParams(window.location.search);
 const locale = query.get("biunivers_locale") ?? "zh-CN";
 const theme = query.get("biunivers_theme") ?? "system";
@@ -58,7 +63,20 @@ document.documentElement.dataset.theme = theme;
 await init();
 
 applySize();
-setup(ctx, width, height);
+
+// 能力协商：WebGPU 优先，失败回退 2D。
+const backend = render_backend();
+const webgpuAvailable = typeof navigator !== "undefined" && !!navigator.gpu;
+let gpu = false;
+if (backend === 1 && webgpuAvailable) {
+  gpu = await setup_gpu(canvas, width, height);
+}
+if (!gpu) {
+  ctx2d = canvas.getContext("2d");
+  const dpr = window.devicePixelRatio || 1;
+  ctx2d.setTransform(dpr, 0, 0, dpr, 0, 0);
+  setup(ctx2d, width, height);
+}
 
 const config = await loadConfig();
 configure(JSON.stringify(config));
