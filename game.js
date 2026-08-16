@@ -86,12 +86,12 @@ export function set_paused(paused) {
 }
 
 /**
- * @param {CanvasRenderingContext2D} ctx
- * @param {number} width
- * @param {number} height
+ * @param {CanvasRenderingContext2D} _ctx
+ * @param {number} _width
+ * @param {number} _height
  */
-export function setup(ctx, width, height) {
-    wasm.setup(ctx, width, height);
+export function setup(_ctx, _width, _height) {
+    wasm.setup(_ctx, _width, _height);
 }
 
 /**
@@ -159,12 +159,6 @@ function __wbg_get_imports() {
         __wbg__wbg_cb_unref_be22cc64ae6946a0: function(arg0) {
             arg0._wbg_cb_unref();
         },
-        __wbg_arc_782f59ce766a8abb: function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
-            arg0.arc(arg1, arg2, arg3, arg4, arg5);
-        }, arguments); },
-        __wbg_beginPath_4b87fe7ed5408cac: function(arg0) {
-            arg0.beginPath();
-        },
         __wbg_beginRenderPass_aa22c432e793359a: function() { return handleError(function (arg0, arg1) {
             const ret = arg0.beginRenderPass(arg1);
             return ret;
@@ -173,9 +167,6 @@ function __wbg_get_imports() {
             const ret = arg0.call(arg1, arg2);
             return ret;
         }, arguments); },
-        __wbg_clearRect_81c3c80fbe793b63: function(arg0, arg1, arg2, arg3, arg4) {
-            arg0.clearRect(arg1, arg2, arg3, arg4);
-        },
         __wbg_configure_0e4789c0f6b35c8e: function() { return handleError(function (arg0, arg1) {
             arg0.configure(arg1);
         }, arguments); },
@@ -224,12 +215,6 @@ function __wbg_get_imports() {
         },
         __wbg_end_f99ebed53d4e198a: function(arg0) {
             arg0.end();
-        },
-        __wbg_fillRect_3077c0e38eb34cd1: function(arg0, arg1, arg2, arg3, arg4) {
-            arg0.fillRect(arg1, arg2, arg3, arg4);
-        },
-        __wbg_fill_33944400e9c94f79: function(arg0) {
-            arg0.fill();
         },
         __wbg_finish_4d91de5e927dd13f: function(arg0, arg1) {
             const ret = arg0.finish(arg1);
@@ -552,9 +537,6 @@ function __wbg_get_imports() {
         },
         __wbg_set_fail_op_92f716dbc88b6973: function(arg0, arg1) {
             arg0.failOp = __wbindgen_enum_GpuStencilOperation[arg1];
-        },
-        __wbg_set_fillStyle_52e75a25be60a3ff: function(arg0, arg1, arg2) {
-            arg0.fillStyle = getStringFromWasm0(arg1, arg2);
         },
         __wbg_set_format_1fcaa7d60546b490: function(arg0, arg1) {
             arg0.format = __wbindgen_enum_GpuTextureFormat[arg1];

@@ -10,6 +10,10 @@
   <body>
     <main id="game">
       <canvas id="canvas" aria-label="Breakout 游戏画面"></canvas>
+      <div id="unsupported" hidden>
+        <p class="unsupported-title">需要 WebGPU</p>
+        <p>本游戏需要支持 WebGPU 的浏览器环境。请使用最新版 Chrome、Edge 或 Firefox（开启 WebGPU），并在支持 WebGPU 的桌面环境中运行。</p>
+      </div>
     </main>
     <script type="module" src="./runtime.js"></script>
   </body>
