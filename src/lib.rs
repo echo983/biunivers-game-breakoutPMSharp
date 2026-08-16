@@ -49,8 +49,6 @@ const BRICK_ROWS: u32 = 6;
 const BRICK_W: f32 = 56.0;
 const BRICK_H: f32 = 22.0;
 const BRICK_GAP: f32 = 4.0;
-const BRICK_LEFT_X: f32 = 82.0;
-const BRICK_TOP_Y: f32 = 492.0; // 顶行中心 y
 
 // 冲击阈值（px/s）：球在本物理子步开始前的速度
 const SOFT_THRESHOLD: f32 = 500.0;
@@ -109,6 +107,7 @@ struct Game {
     accumulator: f64,
     paused: bool,
     bricks: Vec<Brick>,
+    brick_cols: u32,
     balls: u32,
     bricks_remaining: u32,
 }
@@ -271,6 +270,26 @@ fn reset_to_serve(g: &mut Game) {
 
 // ---- 砖块与关卡 ----
 
+/// 按窗口宽度确定砖块列数（最多 8 列，最少 3 列），确保窄窗口下砖阵不溢出。
+fn brick_cols_for_width(width: f32) -> u32 {
+    ((width / (BRICK_W + BRICK_GAP)).floor() as u32).clamp(3, BRICK_COLS)
+}
+
+/// 砖阵总宽度（px）。
+fn brick_total_w(cols: u32) -> f32 {
+    cols as f32 * BRICK_W + (cols as f32 - 1.0) * BRICK_GAP
+}
+
+/// 砖阵最左列中心 x：按窗口宽度居中。
+fn brick_left_x(width: f32, cols: u32) -> f32 {
+    (width - brick_total_w(cols)) * 0.5 + BRICK_W * 0.5
+}
+
+/// 顶行中心 y：距天花板内壁 28px（球径 12 + 间隙 16），确保球可在砖顶与天花板间活动。
+fn brick_top_y(height: f32) -> f32 {
+    height - 28.0
+}
+
 fn brick_kind_for_row(row: u32) -> BrickKind {
     // 自上而下：硬（顶 2 行）→ 普通（中 2 行）→ 软（底 2 行）
     match row {
@@ -296,7 +315,7 @@ fn brick_color(kind: BrickKind) -> [f32; 4] {
     }
 }
 
-/// 重建砖块阵（清空旧砖块 + 按布局生成 8×6 新砖）。
+/// 重建砖块阵（清空旧砖块 + 按布局生成新砖，列数随窗口宽度自适应）。
 fn build_level(g: &mut Game) {
     for brick in g.bricks.drain(..) {
         g.world.remove_body(brick.body);
@@ -306,12 +325,16 @@ fn build_level(g: &mut Game) {
     }
     g.bricks_remaining = 0;
 
+    let cols = brick_cols_for_width(g.width);
+    g.brick_cols = cols;
+    let top_y = brick_top_y(g.height);
+    let left_x = brick_left_x(g.width, cols);
     for row in 0..BRICK_ROWS {
         let kind = brick_kind_for_row(row);
         let (hp, threshold) = brick_stats(kind);
-        let y = BRICK_TOP_Y - row as f32 * (BRICK_H + BRICK_GAP);
-        for col in 0..BRICK_COLS {
-            let x = BRICK_LEFT_X + col as f32 * (BRICK_W + BRICK_GAP);
+        let y = top_y - row as f32 * (BRICK_H + BRICK_GAP);
+        for col in 0..cols {
+            let x = left_x + col as f32 * (BRICK_W + BRICK_GAP);
             let (body, collider) = g.world.insert(
                 RigidBodyBuilder::fixed().translation(Vec2::new(x, y)),
                 ColliderBuilder::cuboid(BRICK_W * 0.5, BRICK_H * 0.5)
@@ -546,6 +569,7 @@ pub async fn setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bo
                     accumulator: 0.0,
                     paused: false,
                     bricks: Vec::new(),
+                    brick_cols: 0,
                     balls: START_BALLS,
                     bricks_remaining: 0,
                 });
@@ -601,6 +625,30 @@ pub fn resize(width: f64, height: f64) {
             pos.x = pos.x.clamp(BALL_RADIUS, width - BALL_RADIUS);
             pos.y = pos.y.clamp(BALL_RADIUS, height - BALL_RADIUS);
             body.set_translation(pos, true);
+        }
+
+        // 砖块按新窗口尺寸重新布局：列数变化则重建（含进度重置），否则仅重定位
+        let cols = brick_cols_for_width(width);
+        if cols != g.brick_cols {
+            build_level(g);
+        } else {
+            let top_y = brick_top_y(height);
+            let left_x = brick_left_x(width, g.brick_cols);
+            for (i, brick) in g.bricks.iter_mut().enumerate() {
+                if !brick.alive {
+                    continue;
+                }
+                let col = (i as u32 % g.brick_cols) as f32;
+                let row = (i as u32 / g.brick_cols) as f32;
+                let x = left_x + col * (BRICK_W + BRICK_GAP);
+                let y = top_y - row * (BRICK_H + BRICK_GAP);
+                if let Some(body) = g.world.bodies.get_mut(brick.body) {
+                    body.set_translation(Vec2::new(x, y), true);
+                }
+                if let Some(renderer) = g.renderer.as_mut() {
+                    renderer.move_brick(brick.render_index, x, y, BRICK_W * 0.5, BRICK_H * 0.5);
+                }
+            }
         }
 
         if let Some(renderer) = g.renderer.as_mut() {
@@ -713,6 +761,7 @@ pub fn step(dt: f64) {
                             if let Some(renderer) = g.renderer.as_mut() {
                                 renderer.hide_brick(render_index);
                             }
+                            update_hud(g);
                         } else if hp_after != g.bricks[i].hp {
                             g.bricks[i].hp = hp_after;
                         }

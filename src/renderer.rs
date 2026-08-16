@@ -90,6 +90,14 @@ struct Object {
     bind_group: wgpu::BindGroup,
 }
 
+/// 一块砖的渲染数据：对象 + 颜色/尺寸（供 resize 时重新定位）。
+struct BrickRender {
+    object: Object,
+    color: [f32; 4],
+    half_w: f32,
+    half_h: f32,
+}
+
 pub struct Renderer {
     canvas: HtmlCanvasElement,
     device: wgpu::Device,
@@ -110,7 +118,7 @@ pub struct Renderer {
     ceiling: Object,
     left_wall: Object,
     right_wall: Object,
-    bricks: Vec<Option<Object>>,
+    bricks: Vec<Option<BrickRender>>,
     camera: CameraUniform,
     css_width: f32,
     css_height: f32,
@@ -345,17 +353,17 @@ impl Renderer {
 
     /// 添加一块砖（cube 网格），返回其索引供 hide_brick 使用。
     pub fn add_brick(&mut self, x: f32, y: f32, half_w: f32, half_h: f32, color: [f32; 4]) -> usize {
-        let model = glam::Mat4::from_scale_rotation_translation(
-            glam::Vec3::new(half_w * 2.0, DEPTH, half_h * 2.0),
-            glam::Quat::IDENTITY,
-            glam::Vec3::new(x, 0.0, y),
-        );
         let uniform = ObjectUniform {
-            model: model.to_cols_array_2d(),
+            model: brick_model(x, y, half_w, half_h).to_cols_array_2d(),
             color,
         };
         let object = create_object_with_uniform(&self.device, &self.object_layout, &self.queue, &uniform);
-        self.bricks.push(Some(object));
+        self.bricks.push(Some(BrickRender {
+            object,
+            color,
+            half_w,
+            half_h,
+        }));
         self.bricks.len() - 1
     }
 
@@ -363,6 +371,23 @@ impl Renderer {
     pub fn hide_brick(&mut self, index: usize) {
         if let Some(slot) = self.bricks.get_mut(index) {
             *slot = None;
+        }
+    }
+
+    /// 重新定位某块砖（窗口 resize 时按新布局刷新物理与渲染位置）。
+    pub fn move_brick(&mut self, index: usize, x: f32, y: f32, half_w: f32, half_h: f32) {
+        if let Some(Some(brick)) = self.bricks.get_mut(index) {
+            brick.half_w = half_w;
+            brick.half_h = half_h;
+            let uniform = ObjectUniform {
+                model: brick_model(x, y, half_w, half_h).to_cols_array_2d(),
+                color: brick.color,
+            };
+            self.queue.write_buffer(
+                &brick.object.uniform_buffer,
+                0,
+                bytemuck::bytes_of(&uniform),
+            );
         }
     }
 
@@ -497,7 +522,7 @@ impl Renderer {
 
             // 砖块（立方体，隐藏的跳过）
             for brick in self.bricks.iter().flatten() {
-                render_pass.set_bind_group(1, &brick.bind_group, &[]);
+                render_pass.set_bind_group(1, &brick.object.bind_group, &[]);
                 render_pass.set_vertex_buffer(0, self.cube.vertex_buffer.slice(..));
                 render_pass.set_index_buffer(self.cube.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                 render_pass.draw_indexed(0..self.cube.index_count, 0, 0..1);
@@ -507,6 +532,15 @@ impl Renderer {
         self.queue.submit(std::iter::once(encoder.finish()));
         self.queue.present(tex);
     }
+}
+
+/// 砖块的模型矩阵：宽高以 px 计的扁平立方体。
+fn brick_model(x: f32, y: f32, half_w: f32, half_h: f32) -> glam::Mat4 {
+    glam::Mat4::from_scale_rotation_translation(
+        glam::Vec3::new(half_w * 2.0, DEPTH, half_h * 2.0),
+        glam::Quat::IDENTITY,
+        glam::Vec3::new(x, 0.0, y),
+    )
 }
 
 fn create_depth_texture(device: &wgpu::Device, config: &wgpu::SurfaceConfiguration) -> wgpu::TextureView {
