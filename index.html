@@ -32,6 +32,20 @@
         </div>
         <p class="menu-hint">点击选择，或按键盘 1 / 2 / 3</p>
       </div>
+      <div id="hud" hidden>
+        <span id="hud-balls"></span>
+        <span id="hud-bricks"></span>
+      </div>
+      <div id="gameover" class="overlay" hidden>
+        <p class="overlay-title">球数耗尽</p>
+        <p class="overlay-sub">再颠几球，把速度攒起来再上。</p>
+        <p class="overlay-hint">点击或按 R 重新开始</p>
+      </div>
+      <div id="victory" class="overlay" hidden>
+        <p class="overlay-title">清版成功！</p>
+        <p class="overlay-sub">砖块全部击破。</p>
+        <p class="overlay-hint">点击或按 R 再来一局</p>
+      </div>
     </main>
     <script type="module" src="./runtime.js"></script>
   </body>

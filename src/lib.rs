@@ -43,11 +43,47 @@ const MAX_BALL_SPEED: f32 = 2000.0;
 // 低于该接近速度不视为一次有效的球拍击球（避免发球/停驻误触发）
 const BOOST_MIN_APPROACH: f32 = 50.0;
 
+// ---- 砖块（见 docs/design-v1.md §3）----
+const BRICK_COLS: u32 = 8;
+const BRICK_ROWS: u32 = 6;
+const BRICK_W: f32 = 56.0;
+const BRICK_H: f32 = 22.0;
+const BRICK_GAP: f32 = 4.0;
+const BRICK_LEFT_X: f32 = 82.0;
+const BRICK_TOP_Y: f32 = 492.0; // 顶行中心 y
+
+// 冲击阈值（px/s）：球在本物理子步开始前的速度
+const SOFT_THRESHOLD: f32 = 500.0;
+const NORMAL_THRESHOLD: f32 = 800.0;
+const HARD_THRESHOLD: f32 = 1100.0;
+
+// ---- 球数（见 docs/design-v1.md §4）----
+const START_BALLS: u32 = 5;
+
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum BrickKind {
+    Soft,
+    Normal,
+    Hard,
+}
+
+struct Brick {
+    body: RigidBodyHandle,
+    collider: ColliderHandle,
+    kind: BrickKind,
+    hp: u32,
+    threshold: f32,
+    render_index: usize,
+    alive: bool,
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum State {
     Menu,
     Serve,
     Play,
+    GameOver,
+    Victory,
 }
 
 struct Game {
@@ -72,6 +108,9 @@ struct Game {
     height: f32,
     accumulator: f64,
     paused: bool,
+    bricks: Vec<Brick>,
+    balls: u32,
+    bricks_remaining: u32,
 }
 
 thread_local! {
@@ -206,6 +245,9 @@ fn select_paddle_inner(g: &mut Game, kind: u8) {
 
     g.state = State::Serve;
     hide_menu();
+    show_hud();
+    bind_overlay_clicks();
+    build_level(g);
 }
 
 fn serve(g: &mut Game) {
@@ -225,6 +267,174 @@ fn reset_to_serve(g: &mut Game) {
     body.set_angvel(0.0, true);
     g.state = State::Serve;
     g.accumulator = 0.0;
+}
+
+// ---- 砖块与关卡 ----
+
+fn brick_kind_for_row(row: u32) -> BrickKind {
+    // 自上而下：硬（顶 2 行）→ 普通（中 2 行）→ 软（底 2 行）
+    match row {
+        0 | 1 => BrickKind::Hard,
+        2 | 3 => BrickKind::Normal,
+        _ => BrickKind::Soft,
+    }
+}
+
+fn brick_stats(kind: BrickKind) -> (u32, f32) {
+    match kind {
+        BrickKind::Soft => (1, SOFT_THRESHOLD),
+        BrickKind::Normal => (1, NORMAL_THRESHOLD),
+        BrickKind::Hard => (2, HARD_THRESHOLD),
+    }
+}
+
+fn brick_color(kind: BrickKind) -> [f32; 4] {
+    match kind {
+        BrickKind::Soft => [0.35, 0.85, 0.5, 1.0],
+        BrickKind::Normal => [0.95, 0.65, 0.2, 1.0],
+        BrickKind::Hard => [0.85, 0.2, 0.3, 1.0],
+    }
+}
+
+/// 重建砖块阵（清空旧砖块 + 按布局生成 8×6 新砖）。
+fn build_level(g: &mut Game) {
+    for brick in g.bricks.drain(..) {
+        g.world.remove_body(brick.body);
+    }
+    if let Some(renderer) = g.renderer.as_mut() {
+        renderer.clear_bricks();
+    }
+    g.bricks_remaining = 0;
+
+    for row in 0..BRICK_ROWS {
+        let kind = brick_kind_for_row(row);
+        let (hp, threshold) = brick_stats(kind);
+        let y = BRICK_TOP_Y - row as f32 * (BRICK_H + BRICK_GAP);
+        for col in 0..BRICK_COLS {
+            let x = BRICK_LEFT_X + col as f32 * (BRICK_W + BRICK_GAP);
+            let (body, collider) = g.world.insert(
+                RigidBodyBuilder::fixed().translation(Vec2::new(x, y)),
+                ColliderBuilder::cuboid(BRICK_W * 0.5, BRICK_H * 0.5)
+                    .restitution(1.0)
+                    .friction(0.3)
+                    .active_events(ActiveEvents::COLLISION_EVENTS),
+            );
+            let render_index = match g.renderer.as_mut() {
+                Some(renderer) => {
+                    renderer.add_brick(x, y, BRICK_W * 0.5, BRICK_H * 0.5, brick_color(kind))
+                }
+                None => 0,
+            };
+            g.bricks.push(Brick {
+                body,
+                collider,
+                kind,
+                hp,
+                threshold,
+                render_index,
+                alive: true,
+            });
+            g.bricks_remaining += 1;
+        }
+    }
+    update_hud(g);
+}
+
+fn brick_index_by_collider(bricks: &[Brick], handle: ColliderHandle) -> Option<usize> {
+    bricks
+        .iter()
+        .position(|b| b.alive && b.collider == handle)
+}
+
+/// 球丢失：扣球，0 则 GameOver，否则回到发球。
+fn on_ball_lost(g: &mut Game) {
+    g.balls = g.balls.saturating_sub(1);
+    update_hud(g);
+    if g.balls == 0 {
+        g.state = State::GameOver;
+        show_overlay("gameover");
+    } else {
+        reset_to_serve(g);
+    }
+}
+
+/// 重新开始：球数回满、重建关卡、回到发球（保留所选球拍）。
+fn restart(g: &mut Game) {
+    g.balls = START_BALLS;
+    g.state = State::Serve;
+    g.accumulator = 0.0;
+    build_level(g);
+    if let (Some(ball), Some(paddle)) = (g.ball, g.paddle) {
+        let px = g.world.bodies[paddle].translation().x;
+        let body = g.world.bodies.get_mut(ball).unwrap();
+        body.set_translation(Vec2::new(px, ball_rest_y(g.paddle_kind)), true);
+        body.set_linvel(Vec2::ZERO, true);
+        body.set_angvel(0.0, true);
+    }
+    hide_overlays();
+    update_hud(g);
+}
+
+// ---- HUD DOM（游戏自管的内容 UI）----
+
+fn set_text(id: &str, text: &str) {
+    if let Some(el) = document_element(id) {
+        let _ = el.set_text_content(Some(text));
+    }
+}
+
+fn update_hud(g: &Game) {
+    set_text("hud-balls", &format!("球 ×{}", g.balls));
+    set_text("hud-bricks", &format!("剩余砖块 {}", g.bricks_remaining));
+}
+
+fn show_hud() {
+    if let Some(hud) = document_element("hud") {
+        let _ = hud.remove_attribute("hidden");
+    }
+}
+
+fn hide_hud() {
+    if let Some(hud) = document_element("hud") {
+        let _ = hud.set_attribute("hidden", "");
+    }
+}
+
+fn show_overlay(id: &str) {
+    if let Some(el) = document_element(id) {
+        let _ = el.remove_attribute("hidden");
+    }
+}
+
+fn hide_overlays() {
+    for id in ["gameover", "victory"] {
+        if let Some(el) = document_element(id) {
+            let _ = el.set_attribute("hidden", "");
+        }
+    }
+}
+
+fn bind_overlay_clicks() {
+    static BOUND: std::sync::Once = std::sync::Once::new();
+    BOUND.call_once(|| {
+        for id in ["gameover", "victory"] {
+            if let Some(el) = document_element(id) {
+                let cb = Closure::wrap(Box::new(move |_event: MouseEvent| {
+                    GAME.with(|slot| {
+                        let mut borrow = slot.borrow_mut();
+                        if let Some(g) = borrow.as_mut() {
+                            match g.state {
+                                State::GameOver | State::Victory => restart(g),
+                                _ => {}
+                            }
+                        }
+                    });
+                }) as Box<dyn FnMut(MouseEvent)>);
+                let _ = el.add_event_listener_with_callback("click", cb.as_ref().unchecked_ref());
+                cb.forget();
+            }
+        }
+    });
 }
 
 // ---- 菜单 DOM（游戏自管的内容 UI）----
@@ -335,6 +545,9 @@ pub async fn setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bo
                     height,
                     accumulator: 0.0,
                     paused: false,
+                    bricks: Vec::new(),
+                    balls: START_BALLS,
+                    bricks_remaining: 0,
                 });
             });
             show_menu();
@@ -418,7 +631,7 @@ pub fn step(dt: f64) {
         }
 
         match g.state {
-            State::Menu => {}
+            State::Menu | State::GameOver | State::Victory => {}
             State::Serve => {
                 // 球粘在球拍上，等待发球
                 let (ball, paddle) = (g.ball.unwrap(), g.paddle.unwrap());
@@ -435,15 +648,15 @@ pub fn step(dt: f64) {
                     g.accumulator = 0.25;
                 }
                 while g.accumulator >= DT {
-                    // 记录接近速度（本子步开始前），用于球拍接球 +10% 增压
+                    // 记录接近速度（本子步开始前）：用于球拍增压与砖块破坏判定
                     let approach_speed = g.world.bodies[g.ball.unwrap()].linvel().length();
                     let vy_before = g.world.bodies[g.ball.unwrap()].linvel().y;
 
                     g.world.step_with_events(&(), &g.event_handler);
 
-                    // 球-球拍新接触（Started）：按 1.1× 接近速度重设出射速度。
-                    // 方向保留求解器结果（由接触面局部法线决定），只改大小。
+                    // 收集本子步的接触事件
                     let mut hit_paddle = false;
+                    let mut hit_bricks: Vec<usize> = Vec::new();
                     while let Ok(ev) = g.collision_recv.try_recv() {
                         if let CollisionEvent::Started(c1, c2, _) = ev {
                             if (c1 == g.ball_collider && c2 == g.paddle_collider)
@@ -451,9 +664,20 @@ pub fn step(dt: f64) {
                             {
                                 hit_paddle = true;
                             }
+                            if c1 == g.ball_collider {
+                                if let Some(i) = brick_index_by_collider(&g.bricks, c2) {
+                                    hit_bricks.push(i);
+                                }
+                            } else if c2 == g.ball_collider {
+                                if let Some(i) = brick_index_by_collider(&g.bricks, c1) {
+                                    hit_bricks.push(i);
+                                }
+                            }
                         }
                     }
-                    // vy_before < 0：必须是向下接近球拍（发球时球向上离开，不触发）
+
+                    // 球-球拍：按 1.3× 接近速度重设出射速度（方向保留求解器结果）。
+                    // vy_before < 0：必须是向下接近球拍（发球时球向上离开，不触发）。
                     if hit_paddle && vy_before < 0.0 && approach_speed > BOOST_MIN_APPROACH {
                         let body = g.world.bodies.get_mut(g.ball.unwrap()).unwrap();
                         let v = body.linvel();
@@ -463,22 +687,63 @@ pub fn step(dt: f64) {
                         }
                     }
 
+                    // 球-砖块：冲击 ≥ 阈值则扣血/破坏；否则砖块反弹（restitution 1.0 不衰减球速）。
+                    for &i in &hit_bricks {
+                        if i >= g.bricks.len() || !g.bricks[i].alive {
+                            continue;
+                        }
+                        let (destroy, hp_after) = {
+                            let b = &g.bricks[i];
+                            if approach_speed >= b.threshold {
+                                if b.hp <= 1 {
+                                    (true, 0)
+                                } else {
+                                    (false, b.hp - 1)
+                                }
+                            } else {
+                                (false, b.hp)
+                            }
+                        };
+                        if destroy {
+                            let body = g.bricks[i].body;
+                            let render_index = g.bricks[i].render_index;
+                            g.world.remove_body(body);
+                            g.bricks[i].alive = false;
+                            g.bricks_remaining -= 1;
+                            if let Some(renderer) = g.renderer.as_mut() {
+                                renderer.hide_brick(render_index);
+                            }
+                        } else if hp_after != g.bricks[i].hp {
+                            g.bricks[i].hp = hp_after;
+                        }
+                    }
+
                     g.accumulator -= DT;
                 }
 
+                // 清版胜利
+                if g.bricks_remaining == 0 {
+                    g.state = State::Victory;
+                    update_hud(g);
+                    show_overlay("victory");
+                }
+
                 // 低速归零；若球已落在球拍附近则回到发球状态。
-                let body = g.world.bodies.get_mut(g.ball.unwrap()).unwrap();
-                if body.linvel().length() < SETTLE_SPEED && body.angvel().abs() < SETTLE_ANGVEL {
-                    if body.translation().y > PADDLE_Y - 60.0 {
-                        g.state = State::Serve;
+                if g.state == State::Play {
+                    let body = g.world.bodies.get_mut(g.ball.unwrap()).unwrap();
+                    if body.linvel().length() < SETTLE_SPEED && body.angvel().abs() < SETTLE_ANGVEL
+                    {
+                        if body.translation().y > PADDLE_Y - 60.0 {
+                            g.state = State::Serve;
+                        }
                     }
                 }
 
-                // 球落出画面：重置发球（生命系统后续再加）
+                // 球落出画面：扣球，0 则 GameOver
                 if g.state == State::Play
                     && g.world.bodies[g.ball.unwrap()].translation().y < LOSS_Y
                 {
-                    reset_to_serve(g);
+                    on_ball_lost(g);
                 }
             }
         }
@@ -519,6 +784,13 @@ pub fn key(code: &str, down: bool) {
                     "Digit3" => select_paddle_inner(g, VARIANT_BOWL),
                     _ => {}
                 }
+            }
+            return;
+        }
+
+        if matches!(g.state, State::GameOver | State::Victory) {
+            if down && code == "KeyR" {
+                restart(g);
             }
             return;
         }

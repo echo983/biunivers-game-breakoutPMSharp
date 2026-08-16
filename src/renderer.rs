@@ -98,6 +98,7 @@ pub struct Renderer {
     config: wgpu::SurfaceConfiguration,
     depth_view: wgpu::TextureView,
     pipeline: wgpu::RenderPipeline,
+    object_layout: wgpu::BindGroupLayout,
     camera_buffer: wgpu::Buffer,
     camera_bind_group: wgpu::BindGroup,
     sphere: MeshBuffers,
@@ -109,6 +110,7 @@ pub struct Renderer {
     ceiling: Object,
     left_wall: Object,
     right_wall: Object,
+    bricks: Vec<Option<Object>>,
     camera: CameraUniform,
     css_width: f32,
     css_height: f32,
@@ -260,6 +262,7 @@ impl Renderer {
             config,
             depth_view,
             pipeline,
+            object_layout,
             camera_buffer,
             camera_bind_group,
             sphere,
@@ -271,6 +274,7 @@ impl Renderer {
             ceiling,
             left_wall,
             right_wall,
+            bricks: Vec::new(),
             camera: CameraUniform {
                 view_proj: [[0.0; 4]; 4],
                 light: [0.4, -0.6, 0.7, 0.35],
@@ -332,6 +336,34 @@ impl Renderer {
         };
         self.queue
             .write_buffer(&self.paddle.uniform_buffer, 0, bytemuck::bytes_of(&uniform));
+    }
+
+    /// 清空全部砖块（重建关卡时调用）。
+    pub fn clear_bricks(&mut self) {
+        self.bricks.clear();
+    }
+
+    /// 添加一块砖（cube 网格），返回其索引供 hide_brick 使用。
+    pub fn add_brick(&mut self, x: f32, y: f32, half_w: f32, half_h: f32, color: [f32; 4]) -> usize {
+        let model = glam::Mat4::from_scale_rotation_translation(
+            glam::Vec3::new(half_w * 2.0, DEPTH, half_h * 2.0),
+            glam::Quat::IDENTITY,
+            glam::Vec3::new(x, 0.0, y),
+        );
+        let uniform = ObjectUniform {
+            model: model.to_cols_array_2d(),
+            color,
+        };
+        let object = create_object_with_uniform(&self.device, &self.object_layout, &self.queue, &uniform);
+        self.bricks.push(Some(object));
+        self.bricks.len() - 1
+    }
+
+    /// 隐藏（破坏）某块砖：保留占位，绘制时跳过。
+    pub fn hide_brick(&mut self, index: usize) {
+        if let Some(slot) = self.bricks.get_mut(index) {
+            *slot = None;
+        }
     }
 
     fn update_camera(&mut self) {
@@ -462,6 +494,14 @@ impl Renderer {
                 render_pass.set_bind_group(1, &object.bind_group, &[]);
                 render_pass.draw_indexed(0..self.cube.index_count, 0, 0..1);
             }
+
+            // 砖块（立方体，隐藏的跳过）
+            for brick in self.bricks.iter().flatten() {
+                render_pass.set_bind_group(1, &brick.bind_group, &[]);
+                render_pass.set_vertex_buffer(0, self.cube.vertex_buffer.slice(..));
+                render_pass.set_index_buffer(self.cube.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                render_pass.draw_indexed(0..self.cube.index_count, 0, 0..1);
+            }
         }
 
         self.queue.submit(std::iter::once(encoder.finish()));
@@ -513,6 +553,21 @@ fn create_object_bind_group(
 
 fn create_object(device: &wgpu::Device, layout: &wgpu::BindGroupLayout) -> Object {
     let uniform_buffer = create_uniform_buffer(device);
+    let bind_group = create_object_bind_group(device, layout, &uniform_buffer);
+    Object {
+        uniform_buffer,
+        bind_group,
+    }
+}
+
+fn create_object_with_uniform(
+    device: &wgpu::Device,
+    layout: &wgpu::BindGroupLayout,
+    queue: &wgpu::Queue,
+    uniform: &ObjectUniform,
+) -> Object {
+    let uniform_buffer = create_uniform_buffer(device);
+    queue.write_buffer(&uniform_buffer, 0, bytemuck::bytes_of(uniform));
     let bind_group = create_object_bind_group(device, layout, &uniform_buffer);
     Object {
         uniform_buffer,
