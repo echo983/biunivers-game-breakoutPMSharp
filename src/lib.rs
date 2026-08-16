@@ -922,7 +922,15 @@ pub fn wheel(_dx: f64, _dy: f64) {}
 
 #[wasm_bindgen]
 pub fn set_paused(paused: bool) {
-    with_game(|g| g.paused = paused);
+    with_game(|g| {
+        g.paused = paused;
+        if paused {
+            // 暂停/隐藏时释放按键，避免 keyup 丢失导致球拍锁死（dir=0）
+            g.key_left = false;
+            g.key_right = false;
+            g.paddle_vel = 0.0;
+        }
+    });
 }
 
 #[wasm_bindgen]

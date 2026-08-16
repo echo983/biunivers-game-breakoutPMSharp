@@ -90,13 +90,22 @@ if (!gpu) {
     "Space", "Tab", "PageUp", "PageDown", "Home", "End",
   ]);
 
+  // 跟踪按下的键：失焦时统一释放，避免 keyup 丢失导致游戏侧按键卡死。
+  const heldKeys = new Set();
+
   window.addEventListener("keydown", (event) => {
     if (NAV_KEYS.has(event.code)) event.preventDefault();
+    heldKeys.add(event.code);
     key(event.code, true);
   });
   window.addEventListener("keyup", (event) => {
     if (NAV_KEYS.has(event.code)) event.preventDefault();
+    heldKeys.delete(event.code);
     key(event.code, false);
+  });
+  window.addEventListener("blur", () => {
+    for (const code of heldKeys) key(code, false);
+    heldKeys.clear();
   });
 
   canvas.addEventListener("pointerdown", (event) => {

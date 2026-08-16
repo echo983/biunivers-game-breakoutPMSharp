@@ -4,7 +4,16 @@ Biunivers Breakout 发布历史。版本号对应 `biunivers.app.json` 的 `vers
 
 ## 未发布
 
-- `feat/keyboard-control` 分支上 0.5.8（阈值梯度减半 + 球拍提速），见下文。
+- `feat/keyboard-control` 分支上 0.5.9（球拍锁死修复），见下文。
+
+## 0.5.9 — 2026-08-16
+
+修复开局后球拍偶发锁死：
+
+- **根因**：iframe 失焦时 keyup 丢失 → `key_left`/`key_right` 卡 true → 双键同 true 时
+  `dir=0`，球拍无法移动（间歇性，符合"有...的情况"）。
+- **修复**：① 外壳跟踪按下键，`blur` 时统一释放；② 游戏侧 `set_paused(true)` 清按键
+  状态 + 归零球拍速度（visibilitychange 路径的兜底）。
 
 ## 0.5.8 — 2026-08-16
 
