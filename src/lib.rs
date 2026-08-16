@@ -59,12 +59,11 @@ const BRICK_H: f32 = 22.0;
 const BRICK_GAP: f32 = 4.0;
 
 // 冲击阈值（px/s）：球在本物理子步开始前的速度。
-// 0.5.6 重标定（配合重力 900）：此前按"发射速度"标定，实际砖块区冲击远低于发射
-// （重力衰减）。探测实测重力 900 下各砖行最大冲击：绿区 1131 / 黄区 1076 / 硬区 1020，
-// 故阈值设 500/750/850，三档余量健康（+126%/+43%/+20%）。
+// 0.5.7：硬砖 HP2→1、阈值 850→800。探测实测红砖命中平均冲击 1039（+30% 余量），
+// 但需连续两次近满速命中（2HP）且无伤害反馈 → 玩家体感"无法打破"。改为一击即破。
 const SOFT_THRESHOLD: f32 = 500.0;
 const NORMAL_THRESHOLD: f32 = 750.0;
-const HARD_THRESHOLD: f32 = 850.0;
+const HARD_THRESHOLD: f32 = 800.0;
 
 // ---- 球数（见 docs/design-v1.md §4）----
 const START_BALLS: u32 = 5;
@@ -195,12 +194,23 @@ fn bowl_points() -> Vec<Vec2> {
 
 fn paddle_collider(kind: u8) -> ColliderBuilder {
     match kind {
-        VARIANT_RUGBY => ColliderBuilder::capsule_x(
-            PADDLE_HALF_W[VARIANT_RUGBY as usize] - PADDLE_HALF_H[VARIANT_RUGBY as usize],
-            PADDLE_HALF_H[VARIANT_RUGBY as usize],
-        )
-        .restitution(PADDLE_REST[VARIANT_RUGBY as usize])
-        .friction(0.4),
+        VARIANT_RUGBY => {
+            // 凸椭圆：法线沿顶面连续变化（中央 0°、两侧渐偏），实现"曲率瞄准"。
+            // 胶囊（capsule_x）中段是平面，命中 x∈[-62,+62] 全部垂直反射，手感像平板。
+            let pts: Vec<Vec2> = (0..24)
+                .map(|i| {
+                    let t = std::f32::consts::TAU * i as f32 / 24.0;
+                    Vec2::new(
+                        PADDLE_HALF_W[VARIANT_RUGBY as usize] * t.cos(),
+                        PADDLE_HALF_H[VARIANT_RUGBY as usize] * t.sin(),
+                    )
+                })
+                .collect();
+            ColliderBuilder::convex_hull(&pts)
+                .expect("rugby convex hull")
+                .restitution(PADDLE_REST[VARIANT_RUGBY as usize])
+                .friction(0.4)
+        }
         VARIANT_BOWL => ColliderBuilder::polyline(bowl_points(), None)
             .restitution(PADDLE_REST[VARIANT_BOWL as usize])
             .friction(0.3),
@@ -316,7 +326,7 @@ fn brick_stats(kind: BrickKind) -> (u32, f32) {
     match kind {
         BrickKind::Soft => (1, SOFT_THRESHOLD),
         BrickKind::Normal => (1, NORMAL_THRESHOLD),
-        BrickKind::Hard => (2, HARD_THRESHOLD),
+        BrickKind::Hard => (1, HARD_THRESHOLD),
     }
 }
 
