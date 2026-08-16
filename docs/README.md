@@ -11,6 +11,7 @@
 | `docs/设计草案1.txt` | 设计草案原始文本（v0.1 的原始来源） | 只读参考；如要改，以整理版为准 |
 | `docs/design-v1.md` | v1 完整版本设计（首个可玩版本规格） | 可演进；评审修复记入附录 |
 | `docs/construction-plan-v1.1.md` | v1.1 施工计划（范围/方案/验收/里程碑） | 施工阶段依据；随实现更新 |
+| `docs/playtest-checklist.md` | v1 实测清单（手感数据 + 参数微调建议） | 每次版本迭代复用；实测结果记入 §6 |
 | `docs/lessons-learned.md` | 开发日志：重大错误、排查方法与经验 | 追加式维护，不删旧条目 |
 | `CHANGELOG.md`（仓库根） | 发布历史（SemVer 版本 → 变更） | 每次行为变更/发布新增条目 |
 | `docs/README.md` | 本文档 | — |
