@@ -26,7 +26,8 @@ const SETTLE_ANGVEL: f32 = 0.1;
 
 // 球拍
 const PADDLE_Y: f32 = 50.0;
-const PADDLE_MOVE_SPEED: [f32; 3] = [720.0, 620.0, 500.0];
+// 移动速度 0.5.8 +25%：900/775/625 px/s（球速上限 1400 时提升可接性）
+const PADDLE_MOVE_SPEED: [f32; 3] = [900.0, 775.0, 625.0];
 // 键盘控制的平滑加速系数：越大反应越快、启停越生硬（8 ≈ 0.12s 到满速）
 const PADDLE_ACCEL: f32 = 8.0;
 const PADDLE_HALF_W: [f32; 3] = [90.0, 80.0, 100.0];
@@ -59,11 +60,11 @@ const BRICK_H: f32 = 22.0;
 const BRICK_GAP: f32 = 4.0;
 
 // 冲击阈值（px/s）：球在本物理子步开始前的速度。
-// 0.5.7：硬砖 HP2→1、阈值 850→800。探测实测红砖命中平均冲击 1039（+30% 余量），
-// 但需连续两次近满速命中（2HP）且无伤害反馈 → 玩家体感"无法打破"。改为一击即破。
-const SOFT_THRESHOLD: f32 = 500.0;
-const NORMAL_THRESHOLD: f32 = 750.0;
-const HARD_THRESHOLD: f32 = 800.0;
+// 0.5.8 梯度减半：300/450/500。实测命中冲击远高于此（绿 avg 793/黄 1065/红 1039），
+// 任何正常命中都破砖，消除"打了没反应"挫败；保留梯度（绿易<黄中<红最难）。
+const SOFT_THRESHOLD: f32 = 300.0;
+const NORMAL_THRESHOLD: f32 = 450.0;
+const HARD_THRESHOLD: f32 = 500.0;
 
 // ---- 球数（见 docs/design-v1.md §4）----
 const START_BALLS: u32 = 5;
