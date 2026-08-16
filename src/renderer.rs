@@ -47,7 +47,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
     let diff = max(dot(n, l), 0.0);
     let ambient = camera.light.w;
     let shade = ambient + (1.0 - ambient) * diff;
-    return vec4<f32>(object.color.rgb * shade, 1.0);
+    return vec4<f32>(object.color.rgb * shade, object.color.a);
 }
 "#;
 
@@ -62,7 +62,7 @@ pub const PADDLE_BOWL: u8 = 2;
 const PADDLE_COLORS: [[f32; 4]; 3] = [
     [1.0, 0.55, 0.2, 1.0],   // 滑板：橙
     [0.72, 0.45, 0.25, 1.0], // 橄榄球：棕
-    [0.3, 0.6, 0.9, 1.0],    // 碗：蓝
+    [0.3, 0.6, 0.9, 0.6],    // 碗：蓝，半透明——球进入碗内时可见
 ];
 
 #[repr(C)]
@@ -210,7 +210,15 @@ impl Renderer {
                 compilation_options: Default::default(),
                 targets: &[Some(wgpu::ColorTargetState {
                     format: config.format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    // Alpha 混合：不透明物体 alpha=1 时等价于覆盖；碗用 alpha<1 显示透明。
+                    blend: Some(wgpu::BlendState {
+                        color: wgpu::BlendComponent {
+                            src_factor: wgpu::BlendFactor::SrcAlpha,
+                            dst_factor: wgpu::BlendFactor::OneMinusSrcAlpha,
+                            operation: wgpu::BlendOperation::Add,
+                        },
+                        alpha: wgpu::BlendComponent::OVER,
+                    }),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
             }),

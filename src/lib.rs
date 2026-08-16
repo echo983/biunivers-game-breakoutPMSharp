@@ -2,6 +2,7 @@ mod mesh;
 mod renderer;
 
 use std::cell::RefCell;
+use std::sync::mpsc::{channel, Receiver};
 
 use rapier2d::dynamics::CoefficientCombineRule;
 use rapier2d::prelude::*;
@@ -33,6 +34,10 @@ const VARIANT_BOWL: u8 = 2;
 
 const SERVE_SPEED: f32 = 520.0;
 const LOSS_Y: f32 = -80.0;
+// 球拍接球时的速度增压系数（见 docs/design-v0.1.md §6）
+const PADDLE_BOOST: f32 = 1.10;
+// 低于该接近速度不视为一次有效的球拍击球（避免发球/停驻误触发）
+const BOOST_MIN_APPROACH: f32 = 50.0;
 
 #[derive(Clone, Copy, PartialEq)]
 enum State {
@@ -44,9 +49,13 @@ enum State {
 struct Game {
     world: PhysicsWorld,
     ball: Option<RigidBodyHandle>,
+    ball_collider: ColliderHandle,
     paddle: Option<RigidBodyHandle>,
+    paddle_collider: ColliderHandle,
     walls: Vec<RigidBodyHandle>,
     renderer: Option<Renderer>,
+    event_handler: ChannelEventCollector,
+    collision_recv: Receiver<CollisionEvent>,
     state: State,
     paddle_kind: u8,
     paddle_half_w: f32,
@@ -165,17 +174,15 @@ fn select_paddle_inner(g: &mut Game, kind: u8) {
     g.paddle_move_speed = PADDLE_MOVE_SPEED[kind as usize];
     g.paddle_target_x = g.width * 0.5;
 
-    let paddle = g
-        .world
-        .insert(
-            RigidBodyBuilder::kinematic_position_based()
-                .translation(Vec2::new(g.width * 0.5, PADDLE_Y)),
-            paddle_collider(kind),
-        )
-        .0;
+    let (paddle, paddle_collider) = g.world.insert(
+        RigidBodyBuilder::kinematic_position_based()
+            .translation(Vec2::new(g.width * 0.5, PADDLE_Y)),
+        paddle_collider(kind).active_events(ActiveEvents::COLLISION_EVENTS),
+    );
     g.paddle = Some(paddle);
+    g.paddle_collider = paddle_collider;
 
-    let ball = g
+    let (ball, ball_collider) = g
         .world
         .insert(
             RigidBodyBuilder::dynamic()
@@ -187,10 +194,11 @@ fn select_paddle_inner(g: &mut Game, kind: u8) {
                 .restitution(0.0)
                 .restitution_combine_rule(CoefficientCombineRule::Max)
                 .friction(FRICTION)
-                .density(1.0),
-        )
-        .0;
+                .density(1.0)
+                .active_events(ActiveEvents::COLLISION_EVENTS),
+        );
     g.ball = Some(ball);
+    g.ball_collider = ball_collider;
 
     g.state = State::Serve;
     hide_menu();
@@ -295,13 +303,22 @@ pub async fn setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bo
 
             let walls = insert_bounds(&mut world, width, height);
 
+            // 碰撞事件通道：用于检测球-球拍接触，实现 +10% 增压。
+            let (collision_send, collision_recv) = channel();
+            let (force_send, _force_recv) = channel();
+            let event_handler = ChannelEventCollector::new(collision_send, force_send);
+
             GAME.with(|slot| {
                 *slot.borrow_mut() = Some(Game {
                     world,
                     ball: None,
+                    ball_collider: ColliderHandle::from_raw_parts(u32::MAX, u32::MAX),
                     paddle: None,
+                    paddle_collider: ColliderHandle::from_raw_parts(u32::MAX, u32::MAX),
                     walls,
                     renderer: Some(renderer),
+                    event_handler,
+                    collision_recv,
                     state: State::Menu,
                     paddle_kind: VARIANT_SKATE,
                     paddle_half_w: PADDLE_HALF_W[VARIANT_SKATE as usize],
@@ -414,7 +431,33 @@ pub fn step(dt: f64) {
                     g.accumulator = 0.25;
                 }
                 while g.accumulator >= DT {
-                    g.world.step();
+                    // 记录接近速度（本子步开始前），用于球拍接球 +10% 增压
+                    let approach_speed = g.world.bodies[g.ball.unwrap()].linvel().length();
+                    let vy_before = g.world.bodies[g.ball.unwrap()].linvel().y;
+
+                    g.world.step_with_events(&(), &g.event_handler);
+
+                    // 球-球拍新接触（Started）：按 1.1× 接近速度重设出射速度。
+                    // 方向保留求解器结果（由接触面局部法线决定），只改大小。
+                    let mut hit_paddle = false;
+                    while let Ok(ev) = g.collision_recv.try_recv() {
+                        if let CollisionEvent::Started(c1, c2, _) = ev {
+                            if (c1 == g.ball_collider && c2 == g.paddle_collider)
+                                || (c1 == g.paddle_collider && c2 == g.ball_collider)
+                            {
+                                hit_paddle = true;
+                            }
+                        }
+                    }
+                    // vy_before < 0：必须是向下接近球拍（发球时球向上离开，不触发）
+                    if hit_paddle && vy_before < 0.0 && approach_speed > BOOST_MIN_APPROACH {
+                        let body = g.world.bodies.get_mut(g.ball.unwrap()).unwrap();
+                        let v = body.linvel();
+                        if v.length() > 0.0 {
+                            body.set_linvel(v.normalize() * (approach_speed * PADDLE_BOOST), true);
+                        }
+                    }
+
                     g.accumulator -= DT;
                 }
 
