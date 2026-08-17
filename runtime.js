@@ -12,6 +12,7 @@ import init, {
   wheel,
   set_paused,
   destroy,
+  debug_state,
 } from "./game.js";
 
 const canvas = document.querySelector("#canvas");
@@ -163,6 +164,18 @@ if (!gpu) {
     applySize();
     resize(width, height);
   });
+
+  // 调试：轮询游戏状态写入 #debug（排查球拍卡住/输入链路）。
+  const debugEl = document.querySelector("#debug");
+  if (debugEl) {
+    setInterval(() => {
+      try {
+        debugEl.textContent = debug_state();
+      } catch {
+        // 忽略
+      }
+    }, 300);
+  }
 
   requestAnimationFrame(frame);
 }

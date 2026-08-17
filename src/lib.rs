@@ -122,6 +122,7 @@ struct Game {
     brick_cols: u32,
     balls: u32,
     bricks_remaining: u32,
+    last_key: String,
 }
 
 thread_local! {
@@ -279,6 +280,8 @@ fn serve(g: &mut Game) {
     let body = g.world.bodies.get_mut(ball).unwrap();
     body.set_linvel(Vec2::new(-60.0, SERVE_SPEED), true);
     g.state = State::Play;
+    // 发球动作可能把焦点带离游戏（按钮/外层），立即收回键盘焦点
+    focus_canvas();
 }
 
 fn reset_to_serve(g: &mut Game) {
@@ -612,6 +615,7 @@ pub async fn setup_gpu(canvas: HtmlCanvasElement, width: f64, height: f64) -> bo
                     brick_cols: 0,
                     balls: START_BALLS,
                     bricks_remaining: 0,
+                    last_key: String::new(),
                 });
             });
             show_menu();
@@ -882,6 +886,8 @@ pub fn key(code: &str, down: bool) {
             return;
         };
 
+        g.last_key = format!("{code}{}", if down { "↓" } else { "↑" });
+
         if g.state == State::Menu {
             if down {
                 match code {
@@ -941,6 +947,28 @@ pub fn set_paused(paused: bool) {
             g.paddle_vel = 0.0;
         }
     });
+}
+
+/// 调试：回读游戏状态，供外壳轮询显示（排查"球拍卡住"）。
+#[wasm_bindgen]
+pub fn debug_state() -> String {
+    with_game(|g| {
+        let state = match g.state {
+            State::Menu => "Menu",
+            State::Serve => "Serve",
+            State::Play => "Play",
+            State::GameOver => "GameOver",
+            State::Victory => "Victory",
+        };
+        format!(
+            "state={state} kL={} kR={} vel={:.0} paused={} last={}",
+            g.key_left as u8,
+            g.key_right as u8,
+            g.paddle_vel,
+            g.paused as u8,
+            g.last_key,
+        )
+    })
 }
 
 #[wasm_bindgen]
