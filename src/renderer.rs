@@ -3,7 +3,10 @@ use std::mem::size_of;
 use wgpu::util::DeviceExt;
 use web_sys::HtmlCanvasElement;
 
-use crate::mesh::{generate_unit_box, generate_unit_hemisphere, generate_unit_sphere, Mesh, Vertex};
+use crate::mesh::{
+    generate_skateboard, generate_unit_box, generate_unit_hemisphere, generate_unit_sphere, Mesh,
+    Vertex,
+};
 
 const WGSL: &str = r#"
 struct CameraUniform {
@@ -56,7 +59,8 @@ const WALL_COLOR: [f32; 4] = [0.35, 0.42, 0.55, 1.0];
 const GROUND_THICKNESS: f32 = 8.0;
 const DEPTH: f32 = 120.0;
 
-// 球拍类型（与 lib.rs 保持一致）：0=滑板(cube) 1=橄榄球(sphere) 2=碗(hemisphere)
+// 球拍类型（与 lib.rs 保持一致）：0=滑板(cube→skateboard) 1=橄榄球(sphere) 2=碗(hemisphere)
+pub const PADDLE_SKATE: u8 = 0;
 pub const PADDLE_RUGBY: u8 = 1;
 pub const PADDLE_BOWL: u8 = 2;
 const PADDLE_COLORS: [[f32; 4]; 3] = [
@@ -112,6 +116,7 @@ pub struct Renderer {
     sphere: MeshBuffers,
     cube: MeshBuffers,
     hemisphere: MeshBuffers,
+    skateboard: MeshBuffers,
     ball: Object,
     paddle: Object,
     paddle_kind: u8,
@@ -255,6 +260,7 @@ impl Renderer {
         let sphere = create_mesh_buffers(&device, &generate_unit_sphere(24, 32));
         let cube = create_mesh_buffers(&device, &generate_unit_box());
         let hemisphere = create_mesh_buffers(&device, &generate_unit_hemisphere(24, 32));
+        let skateboard = create_mesh_buffers(&device, &generate_skateboard());
 
         let ball = create_object(&device, &object_layout);
         let paddle = create_object(&device, &object_layout);
@@ -276,6 +282,7 @@ impl Renderer {
             sphere,
             cube,
             hemisphere,
+            skateboard,
             ball,
             paddle,
             paddle_kind: 0,
@@ -331,7 +338,12 @@ impl Renderer {
                 glam::Quat::IDENTITY,
                 glam::Vec3::new(x, 0.0, y),
             ),
-            // 滑板：单位立方体 [-0.5,0.5]，放大两倍到全尺寸
+            // 滑板：组合网格 x∈[-1,1]，板长=半宽、厚度=DEPTH、板厚=半高×2
+            PADDLE_SKATE => glam::Mat4::from_scale_rotation_translation(
+                glam::Vec3::new(half_w, DEPTH, half_h * 2.0),
+                glam::Quat::IDENTITY,
+                glam::Vec3::new(x, 0.0, y),
+            ),
             _ => glam::Mat4::from_scale_rotation_translation(
                 glam::Vec3::new(half_w * 2.0, DEPTH, half_h * 2.0),
                 glam::Quat::IDENTITY,
@@ -507,7 +519,13 @@ impl Renderer {
                     render_pass.set_index_buffer(self.hemisphere.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
                     render_pass.draw_indexed(0..self.hemisphere.index_count, 0, 0..1);
                 }
-                // 滑板（默认，含未知类型兜底）
+                // 滑板：组合网格（板面 + 翘头 + 轮子）
+                PADDLE_SKATE => {
+                    render_pass.set_vertex_buffer(0, self.skateboard.vertex_buffer.slice(..));
+                    render_pass.set_index_buffer(self.skateboard.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
+                    render_pass.draw_indexed(0..self.skateboard.index_count, 0, 0..1);
+                }
+                // 未知类型兜底
                 _ => {
                     render_pass.set_vertex_buffer(0, self.cube.vertex_buffer.slice(..));
                     render_pass.set_index_buffer(self.cube.index_buffer.slice(..), wgpu::IndexFormat::Uint32);
