@@ -110,6 +110,8 @@ if (!gpu) {
 
   canvas.addEventListener("pointerdown", (event) => {
     event.preventDefault();
+    // 点击时把键盘焦点留在游戏内，避免按键落到外层/焦点元素
+    canvas.focus();
     try {
       canvas.setPointerCapture(event.pointerId);
     } catch {
@@ -147,8 +149,13 @@ if (!gpu) {
   function frame(now) {
     const dt = Math.min((now - lastTime) / 1000, 0.05);
     lastTime = now;
-    step(dt);
-    render();
+    try {
+      step(dt);
+      render();
+    } catch (err) {
+      // 单帧异常不应终止整个游戏循环（否则表现为"开局/发球后卡死"）
+      console.error("frame error:", err);
+    }
     requestAnimationFrame(frame);
   }
 

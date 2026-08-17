@@ -270,6 +270,7 @@ fn select_paddle_inner(g: &mut Game, kind: u8) {
     hide_menu();
     show_hud();
     bind_overlay_clicks();
+    focus_canvas();
     build_level(g);
 }
 
@@ -495,6 +496,15 @@ fn document_element(id: &str) -> Option<web_sys::Element> {
     let window = web_sys::window()?;
     let document = window.document()?;
     document.get_element_by_id(id)
+}
+
+/// 把键盘焦点放到 canvas 上，避免按键落到菜单按钮等焦点元素上。
+fn focus_canvas() {
+    if let Some(el) = document_element("canvas") {
+        if let Ok(html) = el.dyn_into::<web_sys::HtmlElement>() {
+            let _ = html.focus();
+        }
+    }
 }
 
 fn show_menu() {
